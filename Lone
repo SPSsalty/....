@@ -838,12 +838,12 @@ local Tabs = {
 -- Main Tab
 local MainLeftBox = Tabs.Main:AddLeftGroupbox('Aimbot')
 local MainRightBox = Tabs.Main:AddRightGroupbox('FOV Settings')
+local MainESPBox = Tabs.Main:AddLeftGroupbox('ESP Quick Toggle')
 local MainCrosshairBox = Tabs.Main:AddRightGroupbox('Crosshair')
-local HitboxLeftBox = Tabs.Main:AddLeftGroupbox('Hitbox Expander')
+local MainSection = Tabs.Main:AddLeftGroupbox("Fast Reload")
 
-local WeaponsLeftBox = Tabs.WeaponsTab:AddLeftGroupbox('Gun Mods')
-
-WeaponsLeftBox:AddToggle("FastReloadToggle", {
+-- Add toggle to control script execution
+MainSection:AddToggle("FastReloadToggle", {
     Text = "FastReload",
     Default = false,
     Tooltip = "Toggle fast reload.",
@@ -903,6 +903,13 @@ MainLeftBox:AddInput('AimbotBind', {
     Callback = function(value)
         aimbotKey = Enum.KeyCode[value:upper()]
     end
+})
+
+MainESPBox:AddToggle('ESPEnabled', {
+    Text = 'Enable ESP',
+    Default = false,
+    Tooltip = 'Toggle all ESP features',
+    Callback = function(value) isESPEnabled = value end
 })
 
 MainRightBox:AddSlider('FOVAmount', {
@@ -998,13 +1005,6 @@ MainCrosshairBox:AddLabel('Crosshair Color'):AddColorPicker('CrosshairColor', {
 
 -- ESP Tab
 local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Settings')
-
-ESPLeftBox:AddToggle('ESPEnabled', {
-    Text = 'Enable ESP',
-    Default = false,
-    Tooltip = 'Toggle all ESP features',
-    Callback = function(value) isESPEnabled = value end
-})
 
 ESPLeftBox:AddToggle('BoxESP', {
     Text = 'Box ESP',
@@ -1326,7 +1326,7 @@ MiscLeftBox:AddInput('ZoomBind', {
     end
 })
 
-local MovementBox = Tabs.Misc:AddRightGroupbox('Movement')
+local MovementBox = Tabs.Misc:AddRightGroupbox('Another Miscellaneous')
 
 -- Replace the TPWalk toggle and remove SpeedhackMode toggle
 MovementBox:AddToggle('TPWalk', {
@@ -1378,7 +1378,7 @@ MovementBox:AddSlider('TPWalkSpeed', {
 local heliHitboxSize = Vector3.new(50, 50, 50)  -- Helicopter hitbox size
 
 -- Replace the HitboxExpander toggle callback
-HitboxLeftBox:AddToggle('HitboxExpander', {
+MovementBox:AddToggle('HitboxExpander', {
     Text = 'Hitbox Expander',
     Default = false,
     Tooltip = 'Expands enemy and helicopter hitboxes',
@@ -1435,7 +1435,7 @@ HitboxLeftBox:AddToggle('HitboxExpander', {
     end
 })
 
-HitboxLeftBox:AddSlider('HitboxSize', {
+MovementBox:AddSlider('HitboxSize', {
     Text = 'Hitbox Size',
     Default = 0,
     Min = 0,
@@ -1448,7 +1448,7 @@ HitboxLeftBox:AddSlider('HitboxSize', {
     end
 })
 
-HitboxLeftBox:AddSlider('HitboxTransparency', {
+MovementBox:AddSlider('HitboxTransparency', {
     Text = 'Hitbox Transparency',
     Default = 0,
     Min = 0,
@@ -1543,7 +1543,8 @@ MovementBox:AddToggle('NoFallDamage', {
     Tooltip = 'Prevents fall damage by controlling descent velocity',
 })
 
-label = MovementBox:AddLabel('NoFallDamage Keybind: L')
+-- Add keybind for no fall damage
+MovementBox:AddLabel('NoFallDamage Keybind: L')
 
 -- Setup callback for the toggle
 Toggles.NoFallDamage:OnChanged(function()
@@ -1586,7 +1587,16 @@ MovementBox:AddToggle('WallClimbEnabled', {
     end
 })
 
-label = MovementBox:AddLabel('Wall Climb Keybind: J')
+-- Keybind setting
+MovementBox:AddLabel('Keybind'):AddKeyPicker('WallClimbKeybind', {
+    Default = 'J',
+    Mode = 'Toggle',
+    Text = 'Wall Climb',
+    NoUI = false,
+    Callback = function(Value)
+        toggleWallClimb(not wallClimbEnabled)
+    end
+})
 
 local function toggleWallClimb(state)
     wallClimbEnabled = state
@@ -1742,6 +1752,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end)
         Options.WallClimbEnabled:SetValue(newState)
     end
+end)
+
+-- Update keybind variable when the UI keybind changes
+Options.WallClimbKeybind:OnClick(function()
+    keybind = Options.WallClimbKeybind.Value
 end)
 
 -- Add ThemeManager and SaveManager to Settings tab
@@ -1949,8 +1964,6 @@ local function GetClosestPlayer()
 
     return ClosestPlayer
 end
-
-Library:Init()
 
 -- Lock camera onto the selected part of the closest player
 local function LockCameraOnClosestPlayer()
@@ -2585,14 +2598,14 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- Add to Misc Tab after ThirdPersonBox
-local NoclipBox = Tabs.Misc:AddRightGroupbox('Insta Break')
+local NoclipBox = Tabs.Misc:AddRightGroupbox('Noclip')
 
-NoclipBox:AddLabel('Hold V to use Insta Break')
+NoclipBox:AddLabel('Hold V to use Noclip')
 
-NoclipBox:AddInput('InstaBreakbind', {
+NoclipBox:AddInput('NoclipBind', {
     Default = 'V',
     Numeric = false,
-    Text = 'Insta Break Key',
+    Text = 'Noclip Key',
     Tooltip = 'Press a key to bind',
     Placeholder = 'Key',
     Callback = function(value)
@@ -2999,6 +3012,14 @@ local function updateESPObject(object, espData)
     updateESPElements(espData, screenPosition, boxSize, distance, humanoid)
     return true
 end
+
+-- Remove all existing update loops
+-- ...existing code... (remove all other RunService.RenderStepped/Heartbeat connections)
+
+-- Keep the rest of the code unchanged
+-- ...existing code...
+
+Library:Init()
 
 -- Fix broken line in crosshair update
 local function UpdateCrosshair()
