@@ -51,6 +51,16 @@ local allowedOres = {
     ["Iron Ore Sand"] = true
 }
 
+-- Convert allowedOres to array format for dropdown
+local oreTypes = {}
+local initialOreSelection = {}
+for oreName, enabled in pairs(allowedOres) do
+    table.insert(oreTypes, oreName)
+    if enabled then
+        table.insert(initialOreSelection, oreName)
+    end
+end
+
 -- FOV Circle
 local fovCircle = Drawing.new("Circle")
 fovCircle.Radius = fovAmount
@@ -838,39 +848,90 @@ local Tabs = {
 -- Main Tab
 local MainLeftBox = Tabs.Main:AddLeftGroupbox('Aimbot')
 local MainRightBox = Tabs.Main:AddRightGroupbox('FOV Settings')
-local MainESPBox = Tabs.Main:AddLeftGroupbox('ESP Quick Toggle')
 local MainCrosshairBox = Tabs.Main:AddRightGroupbox('Crosshair')
-local MainSection = Tabs.Main:AddLeftGroupbox("Fast Reload")
+local MainHitboxBox = Tabs.Main:AddLeftGroupbox("Hitbox Expander") -- New group box for hitbox expander
 
--- Add toggle to control script execution
-MainSection:AddToggle("FastReloadToggle", {
-    Text = "FastReload",
+-- Add hitbox expander to Main tab
+MainHitboxBox:AddToggle('HitboxExpander', {
+    Text = 'Hitbox Expander',
     Default = false,
-    Tooltip = "Toggle fast reload.",
+    Tooltip = 'Expands enemy and helicopter hitboxes',
     Callback = function(value)
-        isRunning = value
+        isHitboxExpander = value
         
-        if isRunning then
-            -- Start the loop when toggle is enabled
-            if FastReload then
-                FastReload:Disconnect()
+        if expanderConnection then
+            expanderConnection:Disconnect()
+            expanderConnection = nil
+            -- Reset all hitboxes when disabled
+            for _, player in ipairs(workspace.Players:GetChildren()) do
+                if player ~= LocalPlayer.Character then
+                    local head = player:FindFirstChild("Head")
+                    if head then
+                        head.Size = Vector3.new(1, 1, 1)
+                        head.Transparency = 0
+                    end
+                end
             end
             
-            FastReload = game:GetService("RunService").Heartbeat:Connect(function()
-                runAllScripts()
-                wait(0.1) -- Changed delay to 0.2 seconds between iterations
-            end)
-            
-            print("Fast Reload Started")
-        else
-            -- Stop the loop when toggle is disabled
-            if FastReload then
-                FastReload:Disconnect()
-                FastReload = nil
+            -- Reset helicopter hitbox
+            local heli = workspace:FindFirstChild("ActiveRaiderX")
+            if heli and heli:FindFirstChild("Base") then
+                heli.Base.Size = Vector3.new(1, 1, 1)
+                heli.Base.Transparency = 0
             end
-            
-            print("Script loop stopped")
         end
+        
+        if value then
+            expanderConnection = RunService.Heartbeat:Connect(function()
+                -- Expand player hitboxes
+                for _, player in ipairs(workspace.Players:GetChildren()) do
+                    if player ~= LocalPlayer.Character then
+                        local head = player:FindFirstChild("Head")
+                        if head then
+                            head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                            head.Transparency = hitboxTransparency
+                            head.Massless = true
+                            head.CanCollide = false
+                        end
+                    end
+                end
+                
+                -- Expand helicopter hitbox
+                local heli = workspace:FindFirstChild("ActiveRaiderX")
+                if heli and heli:FindFirstChild("Base") then
+                    heli.Base.Size = heliHitboxSize
+                    heli.Base.Transparency = hitboxTransparency
+                    heli.Base.Massless = true
+                    heli.Base.CanCollide = false
+                end
+            end)
+        end
+    end
+})
+
+MainHitboxBox:AddSlider('HitboxSize', {
+    Text = 'Hitbox Size',
+    Default = 0,
+    Min = 0,
+    Max = 50,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Adjust hitbox size',
+    Callback = function(value)
+        hitboxSize = value
+    end
+})
+
+MainHitboxBox:AddSlider('HitboxTransparency', {
+    Text = 'Hitbox Transparency',
+    Default = 0,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Tooltip = 'Adjust hitbox transparency',
+    Callback = function(value)
+        hitboxTransparency = value
     end
 })
 
@@ -903,13 +964,6 @@ MainLeftBox:AddInput('AimbotBind', {
     Callback = function(value)
         aimbotKey = Enum.KeyCode[value:upper()]
     end
-})
-
-MainESPBox:AddToggle('ESPEnabled', {
-    Text = 'Enable ESP',
-    Default = false,
-    Tooltip = 'Toggle all ESP features',
-    Callback = function(value) isESPEnabled = value end
 })
 
 MainRightBox:AddSlider('FOVAmount', {
@@ -1005,6 +1059,13 @@ MainCrosshairBox:AddLabel('Crosshair Color'):AddColorPicker('CrosshairColor', {
 
 -- ESP Tab
 local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Settings')
+
+ESPLeftBox:AddToggle('ESPEnabled', {
+    Text = 'Enable ESP',
+    Default = false,
+    Tooltip = 'Toggle all ESP features',
+    Callback = function(value) isESPEnabled = value end
+})
 
 ESPLeftBox:AddToggle('BoxESP', {
     Text = 'Box ESP',
@@ -1164,6 +1225,40 @@ ESPLeftBox:AddLabel('Cloth ESP Color'):AddColorPicker('ClothColor', {
     Default = Color3.fromRGB(0, 255, 0),
     Title = 'Cloth ESP Color',
     Callback = function(value) _G.ClothColor = value end
+})
+
+-- Weapons Tab (Add Fast Reload here)
+local WeaponsLeftBox = Tabs.WeaponsTab:AddLeftGroupbox("Fast Reload")
+
+WeaponsLeftBox:AddToggle("FastReloadToggle", {
+    Text = "FastReload",
+    Default = false,
+    Tooltip = "Toggle fast reload.",
+    Callback = function(value)
+        isRunning = value
+        
+        if isRunning then
+            -- Start the loop when toggle is enabled
+            if FastReload then
+                FastReload:Disconnect()
+            end
+            
+            FastReload = game:GetService("RunService").Heartbeat:Connect(function()
+                runAllScripts()
+                wait(0) -- Changed delay to 0.2 seconds between iterations
+            end)
+            
+            print("Fast Reload Started")
+        else
+            -- Stop the loop when toggle is disabled
+            if FastReload then
+                FastReload:Disconnect()
+                FastReload = nil
+            end
+            
+            print("Script loop stopped")
+        end
+    end
 })
 
 -- World Tab
@@ -1372,92 +1467,6 @@ MovementBox:AddSlider('TPWalkSpeed', {
     Compact = false,
     Callback = function(value)
         TPWalkSpeed = value
-    end
-})
-
-local heliHitboxSize = Vector3.new(50, 50, 50)  -- Helicopter hitbox size
-
--- Replace the HitboxExpander toggle callback
-MovementBox:AddToggle('HitboxExpander', {
-    Text = 'Hitbox Expander',
-    Default = false,
-    Tooltip = 'Expands enemy and helicopter hitboxes',
-    Callback = function(value)
-        isHitboxExpander = value
-        
-        if expanderConnection then
-            expanderConnection:Disconnect()
-            expanderConnection = nil
-            -- Reset all hitboxes when disabled
-            for _, player in ipairs(workspace.Players:GetChildren()) do
-                if player ~= LocalPlayer.Character then
-                    local head = player:FindFirstChild("Head")
-                    if head then
-                        head.Size = Vector3.new(1, 1, 1)
-                        head.Transparency = 0
-                    end
-                end
-            end
-            
-            -- Reset helicopter hitbox
-            local heli = workspace:FindFirstChild("ActiveRaiderX")
-            if heli and heli:FindFirstChild("Base") then
-                heli.Base.Size = Vector3.new(1, 1, 1)
-                heli.Base.Transparency = 0
-            end
-        end
-        
-        if value then
-            expanderConnection = RunService.Heartbeat:Connect(function()
-                -- Expand player hitboxes
-                for _, player in ipairs(workspace.Players:GetChildren()) do
-                    if player ~= LocalPlayer.Character then
-                        local head = player:FindFirstChild("Head")
-                        if head then
-                            head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-                            head.Transparency = hitboxTransparency
-                            head.Massless = true
-                            head.CanCollide = false
-                        end
-                    end
-                end
-                
-                -- Expand helicopter hitbox
-                local heli = workspace:FindFirstChild("ActiveRaiderX")
-                if heli and heli:FindFirstChild("Base") then
-                    heli.Base.Size = heliHitboxSize
-                    heli.Base.Transparency = hitboxTransparency
-                    heli.Base.Massless = true
-                    heli.Base.CanCollide = false
-                end
-            end)
-        end
-    end
-})
-
-MovementBox:AddSlider('HitboxSize', {
-    Text = 'Hitbox Size',
-    Default = 0,
-    Min = 0,
-    Max = 50,
-    Rounding = 1,
-    Compact = false,
-    Tooltip = 'Adjust hitbox size',
-    Callback = function(value)
-        hitboxSize = value
-    end
-})
-
-MovementBox:AddSlider('HitboxTransparency', {
-    Text = 'Hitbox Transparency',
-    Default = 0,
-    Min = 0,
-    Max = 1,
-    Rounding = 2,
-    Compact = false,
-    Tooltip = 'Adjust hitbox transparency',
-    Callback = function(value)
-        hitboxTransparency = value
     end
 })
 
