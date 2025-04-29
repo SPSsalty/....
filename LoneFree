@@ -1,0 +1,1383 @@
+local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
+
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- FOV settings
+local fovAmount = 120
+local teamCheck = false
+local targetPart = "Head"  -- Default target is Head
+
+-- ESP settings
+_G.BoxESP = true
+_G.Tracers = true
+_G.PlayerNames = true
+_G.Distance = true
+_G.ESPColor = Color3.fromRGB(255, 255, 0)  -- Changed to yellow
+_G.TextSize = 20  -- New larger text size
+_G.Chams = true
+_G.ChamsColor = Color3.fromRGB(255, 0, 0)  -- Default red color for chams
+_G.HealthText = true  -- Add health text setting
+_G.HealthBar = true   -- Add health bar setting
+_G.BackpackESP = false
+_G.BackpackColor = Color3.fromRGB(255, 0, 0)  -- Red color for backpacks
+
+-- FOV Circle
+local fovCircle = Drawing.new("Circle")
+fovCircle.Radius = fovAmount
+fovCircle.Visible = true
+fovCircle.Color = Color3.fromRGB(247, 126, 192)
+fovCircle.Thickness = 1
+fovCircle.NumSides = 11
+fovCircle.Position = Vector2.new(0, 0)
+
+-- Toggle states
+local isAimbotEnabled = false
+local isESPEnabled = false
+local isVisibilityCheckEnabled = false  -- Added new toggle state
+local isFullbrightEnabled = false  -- Fullbright toggle state
+local isNoFogEnabled = false  -- No Fog toggle state
+local fogUpdateConnection = nil  -- Add this near other toggle states
+local smoothness = 1 -- Default smoothness value
+local isFOVVisible = true -- Add this near other toggle states
+local isTpWalking = false
+local tpwalking = false
+local jumping = false
+local TPWalkSpeed = 0
+local isHitboxExpander = false
+local expanderConnection = nil
+local hitboxSize = 0  -- Add this new variable
+local hitboxTransparency = 0  -- Add this new variable
+local isCrosshairEnabled = false
+local crosshairSize = 8
+local crosshairThickness = 1.5
+local crosshairColor = Color3.fromRGB(255, 255, 255)
+
+-- Near toggle states
+local isThirdPerson = false
+local thirdPersonKey = Enum.KeyCode.LeftAlt
+local thirdPersonDistance = 2
+local oldCameraType = nil
+local oldCameraSubject = nil
+
+-- Default keybind for Aimbot
+local aimbotKey = Enum.KeyCode.F
+
+-- Replace the zoom variables
+local defaultFOV = workspace.CurrentCamera.FieldOfView
+local zoomEnabled = true
+local zoomKey = Enum.KeyCode.C
+local zoomFOV = 15
+local isZooming = false
+local lastZoomState = false
+
+-- Add these performance optimization variables at the top
+local ESP_UPDATE_INTERVAL = 0.1  -- Update ESP every 0.1 seconds
+local lastESPUpdate = 0
+local cachedParts = {}
+local FOV_UPDATE_INTERVAL = 0.016
+local lastFOVUpdate = 0
+
+-- Add these near other variables at the top
+local currentCharacter = nil
+
+-- Add near other variables at the top
+local chamCache = {}
+local CHAMS_UPDATE_INTERVAL = 0.1
+local lastChamsUpdate = 0
+
+local crosshairLines = {
+    left = Drawing.new("Line"),
+    right = Drawing.new("Line"),
+    top = Drawing.new("Line"),
+    bottom = Drawing.new("Line")
+}
+
+for _, line in pairs(crosshairLines) do
+    line.Visible = false
+    line.Thickness = crosshairThickness
+    line.Color = crosshairColor
+end
+
+local function setupCharacter(char)
+    if not char then return end
+    currentCharacter = char
+    
+    -- Set up death handling
+    local humanoid = char:WaitForChild("Humanoid", 3)
+    if humanoid then
+        humanoid.Died:Connect(function()
+            currentCharacter = nil
+        end)
+    end
+end
+
+-- Add this new function to handle walk speed updates
+local function updateWalkSpeed(humanoid)
+    if not humanoid then return end
+    
+    humanoid.WalkSpeed = defaultWalkSpeed or 16
+end
+
+-- Create window
+local Window = Library:CreateWindow({
+    Title = 'Auralis | Free Version',
+    Center = true, 
+    AutoShow = true,
+})
+
+-- Create Tabs
+local Tabs = {
+    Main = Window:AddTab('Main'), 
+    ESP = Window:AddTab('ESP'),
+    ['World'] = Window:AddTab('World'),
+    ['Misc'] = Window:AddTab('Misc'),
+    ['UI Settings'] = Window:AddTab('Settings'),
+}
+
+-- Main Tab
+local MainLeftBox = Tabs.Main:AddLeftGroupbox('Aimbot')
+local MainRightBox = Tabs.Main:AddRightGroupbox('FOV Settings')
+local MainESPBox = Tabs.Main:AddLeftGroupbox('ESP Quick Toggle')
+local MainCrosshairBox = Tabs.Main:AddRightGroupbox('Crosshair')
+
+MainLeftBox:AddToggle('AimbotEnabled', {
+    Text = 'Enable Aimbot',
+    Default = false,
+    Tooltip = 'Toggle Aimbot functionality',
+    Callback = function(value) isAimbotEnabled = value end
+})
+
+MainLeftBox:AddToggle('VisibilityCheck', {
+    Text = 'Wall Check',
+    Default = false,
+    Tooltip = 'Check if target is visible before aiming',
+    Callback = function(value) isVisibilityCheckEnabled = value end
+})
+
+MainLeftBox:AddButton('Toggle Target Part', function()
+    targetPart = (targetPart == "Head") and "UpperTorso" or "Head"
+    Library:Notify('Now aiming at: ' .. targetPart, 2)
+end)
+
+MainLeftBox:AddInput('AimbotBind', {
+    Default = 'F',
+    Numeric = false,
+    Finished = false,
+    Text = 'Aimbot Keybind',
+    Tooltip = 'Press a key to bind',
+    Placeholder = 'Key',
+    Callback = function(value)
+        aimbotKey = Enum.KeyCode[value:upper()]
+    end
+})
+
+MainESPBox:AddToggle('ESPEnabled', {
+    Text = 'Enable ESP',
+    Default = false,
+    Tooltip = 'Toggle all ESP features',
+    Callback = function(value) isESPEnabled = value end
+})
+
+MainRightBox:AddSlider('FOVAmount', {
+    Text = 'FOV Size',
+    Default = 120,
+    Min = 20,
+    Max = 1000,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(value)
+        fovAmount = value
+        fovCircle.Radius = value
+    end
+})
+
+MainRightBox:AddSlider('Smoothness', {
+    Text = 'Aim Smoothness',
+    Default = 1,
+    Min = 0.1,
+    Max = 1,
+    Rounding = 1,
+    Compact = false,
+    Callback = function(value) smoothness = value end
+})
+
+MainRightBox:AddToggle('ShowFOV', {
+    Text = 'Show FOV',
+    Default = true,
+    Tooltip = 'Toggle FOV circle visibility',
+    Callback = function(value)
+        isFOVVisible = value
+        fovCircle.Visible = value
+    end
+})
+
+MainRightBox:AddLabel('FOV Color'):AddColorPicker('FOVColor', {
+    Default = Color3.fromRGB(247, 126, 192),
+    Title = 'FOV Circle Color',
+    Callback = function(value)
+        fovCircle.Color = value
+    end
+})
+
+MainCrosshairBox:AddToggle('CrosshairEnabled', {
+    Text = 'Show Crosshair',
+    Default = false,
+    Tooltip = 'Toggle custom crosshair',
+    Callback = function(value)
+        isCrosshairEnabled = value
+        for _, line in pairs(crosshairLines) do
+            line.Visible = value
+        end
+    end
+})
+
+MainCrosshairBox:AddSlider('CrosshairSize', {
+    Text = 'Size',
+    Default = 8,
+    Min = 2,
+    Max = 50,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(value)
+        crosshairSize = value
+    end
+})
+
+MainCrosshairBox:AddSlider('CrosshairThickness', {
+    Text = 'Thickness',
+    Default = 1.5,
+    Min = 0.5,
+    Max = 5,
+    Rounding = 1,
+    Compact = false,
+    Callback = function(value)
+        crosshairThickness = value
+        for _, line in pairs(crosshairLines) do
+            line.Thickness = value
+        end
+    end
+})
+
+MainCrosshairBox:AddLabel('Crosshair Color'):AddColorPicker('CrosshairColor', {
+    Default = Color3.fromRGB(255, 255, 255),
+    Title = 'Crosshair Color',
+    Callback = function(value)
+        crosshairColor = value
+        for _, line in pairs(crosshairLines) do
+            line.Color = value
+        end
+    end
+})
+
+-- ESP Tab
+local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Settings')
+
+ESPLeftBox:AddToggle('BoxESP', {
+    Text = 'Box ESP',
+    Default = false,
+    Callback = function(value) _G.BoxESP = value end
+})
+
+ESPLeftBox:AddToggle('TracerESP', {
+    Text = 'Tracers',
+    Default = false,
+    Callback = function(value) _G.Tracers = value end
+})
+
+ESPLeftBox:AddToggle('NameESP', {
+    Text = 'Names',
+    Default = false,
+    Callback = function(value) _G.PlayerNames = value end
+})
+
+ESPLeftBox:AddToggle('DistanceESP', {
+    Text = 'Distance',
+    Default = false,
+    Callback = function(value) _G.Distance = value end
+})
+
+ESPLeftBox:AddToggle('ChamsESP', {
+    Text = 'Chams',
+    Default = false,
+    Callback = function(value) _G.Chams = value end
+})
+
+ESPLeftBox:AddLabel('ESP Color'):AddColorPicker('ESPColor', {
+    Default = Color3.fromRGB(255, 255, 0),
+    Title = 'ESP Color',
+    Callback = function(value) _G.ESPColor = value end
+})
+
+ESPLeftBox:AddLabel('Chams Color'):AddColorPicker('ChamsColor', {
+    Default = Color3.fromRGB(255, 0, 0),
+    Title = 'Chams Color',
+    Callback = function(value) _G.ChamsColor = value end
+})
+
+ESPLeftBox:AddToggle('HealthText', {
+    Text = 'Health Text',
+    Default = false,
+    Callback = function(value) _G.HealthText = value end
+})
+
+ESPLeftBox:AddToggle('HealthBar', {
+    Text = 'Health Bar',
+    Default = false,
+    Callback = function(value) _G.HealthBar = value end
+})
+
+ESPLeftBox:AddToggle('BackpackESP', {
+    Text = 'Backpack ESP',
+    Default = false,
+    Tooltip = 'Show locations of dropped backpacks',
+    Callback = function(value) 
+        _G.BackpackESP = value 
+        if value then
+            local droppedPacks = workspace:FindFirstChild("DroppedPacks")
+            if droppedPacks then
+                for _, backpack in ipairs(droppedPacks:GetChildren()) do
+                    if backpack.Name == "Backpack" then
+                        createBackpackESP(backpack)
+                    end
+                end
+            end
+        else
+            for backpack, esp in pairs(backpackCache) do
+                if esp.text then
+                    esp.text:Remove()
+                end
+                backpackCache[backpack] = nil
+            end
+        end
+    end
+})
+
+ESPLeftBox:AddLabel('Backpack Color'):AddColorPicker('BackpackColor', {
+    Default = Color3.fromRGB(255, 0, 0),
+    Title = 'Backpack ESP Color',
+    Callback = function(value) _G.BackpackColor = value end
+})
+
+-- World Tab
+local WorldLeftBox = Tabs.World:AddLeftGroupbox('World Settings')
+
+-- Store original lighting settings
+local originalLightingSettings = {
+    Brightness = game.Lighting.Brightness,
+    OutdoorAmbient = game.Lighting.OutdoorAmbient,
+    Ambient = game.Lighting.Ambient,
+    GlobalShadows = game.Lighting.GlobalShadows,
+    FogEnd = game.Lighting.FogEnd,
+    FogStart = game.Lighting.FogStart
+}
+
+WorldLeftBox:AddToggle('Fullbright', {
+    Text = 'Fullbright',
+    Default = false,
+    Callback = function(value)
+        isFullbrightEnabled = value
+        
+        if isFullbrightEnabled then
+            game.Lighting.Brightness = 2
+            game.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            game.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            game.Lighting.GlobalShadows = false
+        else
+            game.Lighting.Brightness = originalLightingSettings.Brightness
+            game.Lighting.OutdoorAmbient = originalLightingSettings.OutdoorAmbient
+            game.Lighting.Ambient = originalLightingSettings.Ambient
+            game.Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
+        end
+    end
+})
+
+WorldLeftBox:AddToggle('NoFog', {
+    Text = 'No Fog',
+    Default = false,
+    Callback = function(value)
+        isNoFogEnabled = value
+        
+        if fogUpdateConnection then
+            fogUpdateConnection:Disconnect()
+            fogUpdateConnection = nil
+        end
+
+        if isNoFogEnabled then
+            -- Apply once instead of every frame
+            game.Lighting.FogEnd = 1000000
+            game.Lighting.FogStart = 1000000
+            game.Lighting.Atmosphere.Density = 0
+            game.Lighting.Atmosphere.Offset = 0
+            game.Lighting.Atmosphere.Glare = 0
+            game.Lighting.Atmosphere.Haze = 0
+            
+            -- Only update if something changes the fog
+            fogUpdateConnection = game.Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
+                if isNoFogEnabled then
+                    game.Lighting.FogEnd = 1000000
+                    game.Lighting.FogStart = 1000000
+                end
+            end)
+        else
+            -- Restore original settings
+            game.Lighting.FogEnd = originalLightingSettings.FogEnd
+            game.Lighting.FogStart = originalLightingSettings.FogStart
+            game.Lighting.Atmosphere.Density = 0.3
+            game.Lighting.Atmosphere.Offset = 0.25
+            game.Lighting.Atmosphere.Glare = 0.4
+            game.Lighting.Atmosphere.Haze = 0.4
+        end
+    end
+})
+
+-- Misc Tab
+local MiscLeftBox = Tabs.Misc:AddLeftGroupbox('Miscellaneous')
+
+MiscLeftBox:AddToggle('XRay', {
+    Text = 'XRay',
+    Default = false,
+    Callback = function(value)
+        xrayEnabled = value
+        updateXray()
+    end
+})
+
+MiscLeftBox:AddSlider('XRayTransparency', {
+    Text = 'XRay Transparency',
+    Default = 0.9,
+    Min = 0,
+    Max = 1,
+    Rounding = 2, -- Changed from 1 to 2 for better precision
+    Compact = false,
+    Callback = function(value)
+        transparencyValue = value
+        if xrayEnabled then 
+            updateXray() 
+        end
+    end
+})
+
+MiscLeftBox:AddInput('XRayBind', {
+    Default = 'X',
+    Numeric = false,
+    Text = 'XRay Keybind',
+    Tooltip = 'Press a key to bind',
+    Placeholder = 'Key',
+    Callback = function(value)
+        keybindKey = Enum.KeyCode[value:upper()]
+    end
+})
+
+MiscLeftBox:AddToggle('ZoomEnabled', {
+    Text = 'Enable Zoom',
+    Default = false,
+    Callback = function(value) 
+        zoomEnabled = value
+        if not zoomEnabled and isZooming then
+            handleZoom(false)
+        end
+    end
+})
+
+MiscLeftBox:AddSlider('ZoomFOV', {
+    Text = 'Zoom FOV',
+    Default = 15,
+    Min = 1,
+    Max = 120,
+    Rounding = 0,
+    Callback = function(value)
+        zoomFOV = value
+        if isZooming then
+            workspace.CurrentCamera.FieldOfView = value
+        end
+    end
+})
+
+MiscLeftBox:AddInput('ZoomBind', {
+    Default = 'C',
+    Numeric = false,
+    Text = 'Zoom Keybind',
+    Tooltip = 'Press a key to bind',
+    Placeholder = 'Key',
+    Callback = function(value)
+        zoomKey = Enum.KeyCode[value:upper()]
+    end
+})
+
+local MovementBox = Tabs.Misc:AddRightGroupbox('Another Miscellaneous')
+
+-- Replace the TPWalk toggle and remove SpeedhackMode toggle
+MovementBox:AddToggle('TPWalk', {
+    Text = 'Speedhack',
+    Default = false,
+    Tooltip = 'Makes you run faster [BLATANT]',
+    Callback = function(value)
+        isTpWalking = value
+        tpwalking = value
+        if value then
+            local chr = LocalPlayer.Character
+            local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
+            
+            if hum then
+                local function tpwalk()
+                    if tpwalking and chr and hum and hum.Parent then
+                        if hum.MoveDirection.Magnitude > 0 then
+                            chr:TranslateBy(hum.MoveDirection * TPWalkSpeed/100)
+                        end
+                    end
+                end
+                
+                local tpwalking_connection = RunService.Heartbeat:Connect(function()
+                    pcall(function()
+                        if not isTpWalking then
+                            tpwalking_connection:Disconnect()
+                            return
+                        end
+                        tpwalk()
+                    end)
+                end)
+            end
+        end
+    end
+})
+
+-- Add ThemeManager and SaveManager to Settings tab
+local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+
+MenuGroup:AddButton('Unload', function()
+    -- Clean up crosshair
+    for _, line in pairs(crosshairLines) do
+        line:Remove()
+    end
+    for backpack, esp in pairs(backpackCache) do
+        if esp.text then
+            esp.text:Remove()
+        end
+    end
+    backpackCache = {}
+    if workspace:FindFirstChild("ThirdPerson") then
+        workspace.ThirdPerson:Destroy()
+    end
+    Library:Unload()
+end)
+MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightShift', NoUI = true, Text = 'Menu keybind' }) 
+
+Library.ToggleKeybind = Options.MenuKeybind
+
+-- Initialize Theme Manager
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+
+SaveManager:IgnoreThemeSettings() 
+
+SaveManager:SetIgnoreIndexes({ 'MenuKeybind' }) 
+
+ThemeManager:SetFolder('Auralis')
+SaveManager:SetFolder('Auralis/specific-game')
+
+SaveManager:BuildConfigSection(Tabs['UI Settings']) 
+
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
+
+-- Configuration
+local folder = workspace:FindFirstChild("BuiltObjects") -- Replace with your folder's name
+local excludedModels = {"Large Storage Box", "Furnace","Campfire", "Repair Bench", "Small Storage Box"} -- Add models to exclude
+local transparencyValue = 0.9  -- Change this to be adjustable
+local xrayEnabled = false -- Initial state of Xray
+local keybindKey = Enum.KeyCode.X -- Default keybind for Xray toggle
+
+-- Function to check if a model is excluded
+local function isExcluded(modelName)
+    for _, excludedName in ipairs(excludedModels) do
+        if modelName == excludedName then
+            return true
+        end
+    end
+    return false
+end
+
+-- Function to set MeshPart transparency
+local function setTransparency(model, transparency)
+    if typeof(transparency) ~= "number" then return end
+    
+    for _, descendant in ipairs(model:GetDescendants()) do
+        if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
+            descendant.Transparency = transparency
+        end
+    end
+end
+
+-- Function to apply Xray effect
+local function updateXray()
+    if folder then
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and not isExcluded(model.Name) then
+                setTransparency(model, xrayEnabled and transparencyValue or 0) -- Reset to 0 if disabled
+            end
+        end
+    else
+        warn("Folder not found in workspace.")
+    end
+end
+
+-- Function to toggle Xray using keybind
+local function onKeyPress(input)
+    if input.KeyCode == keybindKey then
+        xrayEnabled = not xrayEnabled
+        updateXray()
+        Library:Notify('Xray ' .. (xrayEnabled and "Enabled" or "Disabled"), 2)
+    end
+end
+
+-- Connect the key press function
+game:GetService("UserInputService").InputBegan:Connect(onKeyPress)
+
+-- Update the FOV circle position
+local function UpdateFovCircle()
+    local currentTime = tick()
+    if currentTime - lastFOVUpdate < FOV_UPDATE_INTERVAL then return end
+    lastFOVUpdate = currentTime
+    
+    local mousePos = UserInputService:GetMouseLocation()
+    fovCircle.Position = mousePos
+end
+
+-- Check if a position is within the FOV circle
+local function IsInFov(position)
+    local mouse = UserInputService:GetMouseLocation()  -- Get exact mouse position
+    local screenPosition, isVisible = Camera:WorldToViewportPoint(position)
+    local distanceToMouse = (Vector2.new(screenPosition.X, screenPosition.Y) - mouse).Magnitude
+    return isVisible and distanceToMouse <= fovAmount
+end
+
+-- Replace the IsVisible function with this improved version
+local function IsVisible(targetPart)
+    -- Validate inputs
+    if not targetPart or not targetPart.Position then return false end
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Head") then return false end
+
+    -- Get camera and target positions
+    local origin = Camera.CFrame.Position
+    local targetPos = targetPart.Position
+    local direction = (targetPos - origin).Unit
+    local distance = (targetPos - origin).Magnitude
+
+    -- Setup raycast
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {
+        LocalPlayer.Character,
+        targetPart.Parent,
+        Camera
+    }
+    raycastParams.IgnoreWater = true
+
+    -- Cast ray from camera to target
+    local result = workspace:Raycast(origin, direction * distance, raycastParams)
+    
+    -- Target is visible if ray didn't hit anything
+    if not result then
+        return true
+    end
+
+    -- If ray hit something, check if it's close to target
+    local hitPoint = result.Position
+    local hitDist = (hitPoint - targetPos).Magnitude
+
+    -- Consider target visible if hit point is very close (accounting for edge cases)
+    return hitDist < 3
+end
+
+-- Get the closest player based on the selected target part
+local function GetClosestPlayer()
+    local ClosestDistance, ClosestPlayer = math.huge, nil
+
+    for _, model in ipairs(workspace.Players:GetChildren()) do
+        if model ~= LocalPlayer.Character and (not teamCheck or model:FindFirstChild("Team") ~= LocalPlayer.Team) then
+            local TargetPart = model:FindFirstChild(targetPart, true)
+            local Humanoid = model:FindFirstChild("Humanoid")
+
+            if TargetPart and Humanoid and Humanoid.Health > 0 then
+                if IsInFov(TargetPart.Position) then
+                    local screenPosition, isVisible = Camera:WorldToViewportPoint(TargetPart.Position)
+                    if isVisible then
+                        local distanceToMouse = (LocalPlayer:GetMouse().X - screenPosition.X) ^ 2 
+                            + (LocalPlayer:GetMouse().Y - screenPosition.Y) ^ 2
+                        if distanceToMouse < ClosestDistance then
+                            ClosestPlayer = model
+                            ClosestDistance = distanceToMouse
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return ClosestPlayer
+end
+
+-- Lock camera onto the selected part of the closest player
+local function LockCameraOnClosestPlayer()
+    local target = GetClosestPlayer()
+    if not target then return end
+
+    local targetPart = target:FindFirstChild(targetPart, true)
+    if not targetPart then return end
+
+    -- Only check visibility if enabled and target is in range
+    if isVisibilityCheckEnabled then
+        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+        if distance > 1000 then return end -- Don't aim at too far targets
+        
+        if not IsVisible(targetPart) then return end
+    end
+
+    -- Smooth aim with adjustable smoothness
+    local targetPos = targetPart.Position
+    local currentPos = Camera.CFrame.Position
+    local newCFrame = CFrame.new(currentPos, targetPos)
+    Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
+end
+
+-- ESP Functions
+local function applyChams(player)
+    if not player or not player:IsA("Model") then return end
+    
+    -- Get or create highlight
+    local highlight = chamCache[player]
+    if not highlight then
+        highlight = Instance.new("Highlight")
+        highlight.Name = "ESPHighlight"
+        highlight.Parent = player
+        chamCache[player] = highlight
+    end
+    
+    -- Update visibility and colors based on conditions
+    if _G.Chams and isESPEnabled then
+        -- Check distance
+        local root = player:FindFirstChild("HumanoidRootPart")
+        local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        
+        if root and localRoot then
+            local distance = (localRoot.Position - root.Position).Magnitude
+            if distance > 1000 then
+                highlight.Enabled = false
+                return
+            end
+        end
+        
+        highlight.Enabled = true
+        highlight.FillColor = _G.ChamsColor
+        highlight.OutlineColor = _G.ChamsColor
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
+    else
+        highlight.Enabled = false
+    end
+end
+
+-- Replace the createESP function with this fixed version
+local function createESP(player)
+    local Box = Drawing.new("Square")
+    Box.Visible = false
+    Box.Color = _G.ESPColor
+    Box.Thickness = 1
+    Box.Transparency = 1
+    Box.Filled = false
+
+    local Tracer = Drawing.new("Line")
+    Tracer.Visible = false
+    Tracer.Color = _G.ESPColor
+    Tracer.Thickness = 1
+    Tracer.Transparency = 1
+
+    local Name = Drawing.new("Text")
+    Name.Visible = false
+    Name.Color = _G.ESPColor
+    Name.Size = _G.TextSize
+    Name.Center = true
+    Name.Outline = true
+
+    local DistanceText = Drawing.new("Text")
+    DistanceText.Visible = false
+    DistanceText.Color = _G.ESPColor
+    DistanceText.Size = _G.TextSize
+    DistanceText.Center = true
+    DistanceText.Outline = true
+
+    local HealthText = Drawing.new("Text")
+    HealthText.Visible = false
+    HealthText.Color = _G.ESPColor
+    HealthText.Size = _G.TextSize
+    HealthText.Center = true
+    HealthText.Outline = true
+
+    local HealthBar = Drawing.new("Square")
+    HealthBar.Visible = false
+    HealthBar.Color = Color3.fromRGB(0, 255, 0)
+    HealthBar.Thickness = 1
+    HealthBar.Filled = true
+
+    local HealthBarOutline = Drawing.new("Square")
+    HealthBarOutline.Visible = false
+    HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
+    HealthBarOutline.Thickness = 1
+    HealthBarOutline.Filled = false
+
+    -- Optimized update function with error handling and performance improvements
+    local lastUpdate = 0
+    local UPDATE_INTERVAL = 1/30  -- 30 FPS is enough for ESP
+    
+    local function UpdateESP()
+        local currentTime = tick()
+        if currentTime - lastUpdate < UPDATE_INTERVAL then return end
+        lastUpdate = currentTime
+        
+        if not player or not player.Parent then return false end
+        
+        local character = player
+        local humanoid = character:FindFirstChild("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        
+        if not humanoid or not rootPart or humanoid.Health <= 0 then
+            Box.Visible = false
+            Tracer.Visible = false
+            Name.Visible = false
+            DistanceText.Visible = false
+            HealthText.Visible = false
+            HealthBar.Visible = false
+            HealthBarOutline.Visible = false
+            return true
+        end
+
+        local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        local distance = (Camera.CFrame.Position - rootPart.Position).Magnitude
+        
+        -- Performance optimization: Skip if too far
+        if distance > 1000 then
+            Box.Visible = false
+            Tracer.Visible = false
+            Name.Visible = false
+            DistanceText.Visible = false
+            HealthText.Visible = false
+            HealthBar.Visible = false
+            HealthBarOutline.Visible = false
+            return true
+        end
+
+        local scaleFactor = 1 / (distance * 0.2)
+        local boxSize = Vector2.new(2000 * scaleFactor, 2500 * scaleFactor)
+        boxSize = Vector2.new(math.clamp(boxSize.X, 30, 200), math.clamp(boxSize.Y, 60, 300))
+
+        -- Improved box size calculation
+        local head = character:FindFirstChild("Head")
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        
+        if head and humanoidRootPart then
+            -- Calculate actual model size
+            local size = humanoidRootPart.Size.Y * 3 -- Approximate full height
+            local width = humanoidRootPart.Size.X * 2 -- Approximate width
+            
+            -- Convert 3D size to 2D screen size with perspective scaling
+            local sizeScaled = size * (100 / distance)
+            local widthScaled = width * (100 / distance)
+            
+            -- Clamp sizes to reasonable bounds
+            sizeScaled = math.clamp(sizeScaled, 10, 100)
+            widthScaled = math.clamp(widthScaled, 5, 50)
+            
+            boxSize = Vector2.new(widthScaled, sizeScaled)
+        end
+
+        if onScreen and isESPEnabled and distance <= 1000 then
+            -- Calculate better distance-based scaling
+            local sizeFactor = 1 / (distance * 0.08) -- Increased base scale
+            local minSize = Vector2.new(8, 12)
+            local maxSize = Vector2.new(35, 50)
+            
+            -- Get character dimensions
+            local characterHeight = (humanoidRootPart.Size.Y * 3) * sizeFactor -- Full body height
+            local characterWidth = (humanoidRootPart.Size.X * 2) * sizeFactor -- Width with arms
+            
+            -- Calculate final box size with constraints
+            local boxWidth = math.clamp(characterWidth * 20, minSize.X, maxSize.X)
+            local boxHeight = math.clamp(characterHeight * 20, minSize.Y, maxSize.Y)
+            
+            -- Update box position and size
+            if _G.BoxESP then
+                Box.Visible = true
+                Box.Size = Vector2.new(boxWidth, boxHeight)
+                Box.Position = Vector2.new(
+                    pos.X - boxWidth/2,
+                    pos.Y - boxHeight/2
+                )
+                Box.Color = _G.ESPColor
+            else
+                Box.Visible = false
+            end
+
+            -- Adjust other ESP elements to match new box size
+            if _G.PlayerNames then
+                Name.Visible = true
+                Name.Text = player.Name
+                Name.Position = Vector2.new(pos.X, pos.Y - boxHeight/2 - 16)
+                Name.Color = _G.ESPColor
+            else
+                Name.Visible = false
+            end
+            
+            if _G.HealthText or _G.HealthBar then
+                local humanoid = player:FindFirstChild("Humanoid")
+                if humanoid then
+                    local health = math.floor(humanoid.Health)
+                    local maxHealth = math.floor(humanoid.MaxHealth)
+                    local healthPercent = health / maxHealth
+
+                    if _G.HealthText then
+                        HealthText.Visible = true
+                        HealthText.Text = tostring(health) .. "/" .. tostring(maxHealth)
+                        HealthText.Position = Vector2.new(pos.X, pos.Y + boxHeight/2)
+                        HealthText.Color = Color3.fromRGB(
+                            255 * (1 - healthPercent),
+                            255 * healthPercent,
+                            0
+                        )
+                    else
+                        HealthText.Visible = false
+                    end
+
+                    if _G.HealthBar then
+                        HealthBarOutline.Visible = true
+                        HealthBar.Visible = true
+                        
+                        local barWidth = 4
+                        local barHeight = boxHeight
+                        local barX = pos.X - boxWidth/2 - barWidth * 2
+                        local barY = pos.Y - boxHeight/2
+                        
+                        HealthBarOutline.Size = Vector2.new(barWidth, barHeight)
+                        HealthBarOutline.Position = Vector2.new(barX, barY)
+                        
+                        HealthBar.Size = Vector2.new(barWidth, barHeight * healthPercent)
+                        HealthBar.Position = Vector2.new(barX, barY + barHeight * (1 - healthPercent))
+                        HealthBar.Color = Color3.fromRGB(
+                            255 * (1 - healthPercent),
+                            255 * healthPercent,
+                            0
+                        )
+                    else
+                        HealthBar.Visible = false
+                        HealthBarOutline.Visible = false
+                    end
+                end
+            else
+                HealthText.Visible = false
+                HealthBar.Visible = false
+                HealthBarOutline.Visible = false
+            end
+            
+            if _G.Distance then
+                DistanceText.Visible = true
+                DistanceText.Text = math.floor(distance) .. "m"
+                DistanceText.Position = Vector2.new(pos.X, pos.Y + boxHeight/2 + 16)
+                DistanceText.Color = _G.ESPColor
+            else
+                DistanceText.Visible = false
+            end
+            
+            if _G.Tracers then
+                Tracer.Visible = true
+                Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                Tracer.To = Vector2.new(pos.X, pos.Y)
+                Tracer.Color = _G.ESPColor
+            else
+                Tracer.Visible = false
+            end
+        else
+            Box.Visible = false
+            Tracer.Visible = false
+            Name.Visible = false
+            DistanceText.Visible = false
+            HealthText.Visible = false
+            HealthBar.Visible = false
+            HealthBarOutline.Visible = false
+        end
+        
+        return true
+    end
+
+    -- More efficient connection management
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        local success, shouldContinue = pcall(UpdateESP)
+        if not success or shouldContinue == false then
+            Box:Remove()
+            Tracer:Remove()
+            Name:Remove()
+            DistanceText:Remove()
+            HealthText:Remove()
+            HealthBar:Remove()
+            HealthBarOutline:Remove()
+            connection:Disconnect()
+        end
+    end)
+end
+
+-- Improve player tracking with error handling
+workspace.Players.ChildAdded:Connect(function(player)
+    if player ~= LocalPlayer.Character then
+        task.spawn(function()
+            local success, err = pcall(function()
+                task.wait(0.5)
+                if player and player.Parent then
+                    createESP(player)
+                end
+            end)
+            if not success then
+                warn("Failed to create ESP:", err)
+            end
+        end)
+    end
+end)
+
+-- Add this connection to create ESP for new players
+workspace.Players.ChildAdded:Connect(function(player)
+    if player ~= LocalPlayer.Character then
+        task.wait(0.5) -- Wait for character to load
+        createESP(player)
+    end
+end)
+
+-- Initialize ESP for existing players
+for _, player in ipairs(workspace.Players:GetChildren()) do
+    if player ~= LocalPlayer.Character then
+        createESP(player)
+    end
+end
+
+-- Keybind handler for toggling Aimbot
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == aimbotKey then
+        isAimbotEnabled = not isAimbotEnabled
+        Library:Notify('Aimbot ' .. (isAimbotEnabled and "Enabled" or "Disabled"), 2)
+    end
+end)
+
+-- Add this new zoom function
+local function handleZoom(isKeyDown)
+    if not zoomEnabled then return end
+    
+    if isKeyDown and not isZooming then
+        isZooming = true
+        lastZoomState = true
+        workspace.CurrentCamera.FieldOfView = zoomFOV
+    elseif not isKeyDown and isZooming then
+        isZooming = false
+        lastZoomState = false
+        workspace.CurrentCamera.FieldOfView = defaultFOV
+    end
+end
+
+-- Replace the zoom keybind handlers
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == zoomKey then
+        handleZoom(true)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == zoomKey then
+        handleZoom(false)
+    end
+end)
+
+-- Add this character tracking connection before Library:Init()
+LocalPlayer.CharacterAdded:Connect(function(char)
+    currentCharacter = char
+    resetMovementState()
+    
+    char:WaitForChild("Humanoid").Died:Connect(function()
+        resetMovementState()
+    end)
+end)
+
+if LocalPlayer.Character then
+    setupCharacter(LocalPlayer.Character)
+end
+
+LocalPlayer.CharacterAdded:Connect(setupCharacter)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    tpwalking = false
+    jumping = false
+end)
+
+local function UpdateCrosshair()
+    if not isCrosshairEnabled then return end
+    
+    local center = UserInputService:GetMouseLocation()
+    
+    -- Update crosshair lines positions
+    crosshairLines.left.From = Vector2.new(center.X - crosshairSize, center.Y)
+    crosshairLines.left.To = Vector2.new(center.X - 2, center.Y)
+    
+    crosshairLines.right.From = Vector2.new(center.X + 2, center.Y)
+    crosshairLines.right.To = Vector2.new(center.X + crosshairSize, center.Y)
+    
+    crosshairLines.top.From = Vector2.new(center.X, center.Y - crosshairSize)
+    crosshairLines.top.To = Vector2.new(center.X, center.Y - 2)
+    
+    crosshairLines.bottom.From = Vector2.new(center.X, center.Y + 2)
+    crosshairLines.bottom.To = Vector2.new(center.X, center.Y + crosshairSize)
+end
+
+-- Add these optimizations near the RunService connection
+local lastMainUpdate = 0
+local MAIN_UPDATE_INTERVAL = 1/60  -- Cap at 60 FPS
+
+RunService.RenderStepped:Connect(function()
+    local currentTime = tick()
+    if currentTime - lastMainUpdate < MAIN_UPDATE_INTERVAL then return end
+    lastMainUpdate = currentTime
+
+    if isAimbotEnabled then
+        LockCameraOnClosestPlayer()
+    end
+    
+    UpdateFovCircle()
+    UpdateCrosshair()
+end)
+
+-- Clean up cached parts when a player leaves
+game.Players.PlayerRemoving:Connect(function(player)
+    if cachedParts[player] then
+        cachedParts[player] = nil
+    end
+    if chamCache[player] then
+        chamCache[player]:Destroy()
+        chamCache[player] = nil
+    end
+end)
+
+local backpackCache = {}
+local BACKPACK_UPDATE_INTERVAL = 0.016  -- Match frame rate for smoother updates
+
+local function createBackpackESP(backpack)
+    if not backpack then return end
+    -- Remove duplicate backpack check to allow recreating ESP if needed
+    
+    local function initESP()
+        local bagPart = backpack:WaitForChild("bag", 2)  -- Wait up to 2 seconds for bag part to load
+        if not bagPart then 
+            -- If bag part didn't load, retry once after a delay
+            task.wait(0.5)
+            bagPart = backpack:FindFirstChild("bag")
+            if not bagPart then return end
+        end
+        
+        -- Remove existing ESP if present
+        if backpackCache[backpack] and backpackCache[backpack].text then
+            backpackCache[backpack].text:Remove()
+        end
+        
+        local Text = Drawing.new("Text")
+        Text.Visible = false
+        Text.Color = _G.BackpackColor
+        Text.Size = _G.TextSize
+        Text.Center = true
+        Text.Outline = true
+        
+        backpackCache[backpack] = {
+            text = Text,
+            lastUpdate = 0
+        }
+        
+        local function Update()
+            local connection
+            connection = RunService.RenderStepped:Connect(function()
+                if not backpack or not backpack.Parent or not bagPart.Parent then
+                    Text.Visible = false
+                    if not backpack or not backpack.Parent then
+                        connection:Disconnect()
+                        Text:Remove()
+                        backpackCache[backpack] = nil
+                        return
+                    end
+                end
+                
+                local currentTime = tick()
+                if currentTime - backpackCache[backpack].lastUpdate < BACKPACK_UPDATE_INTERVAL then return end
+                backpackCache[backpack].lastUpdate = currentTime
+                
+                local vector, onScreen = Camera:WorldToViewportPoint(bagPart.Position)
+                local distance = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
+                    (LocalPlayer.Character.HumanoidRootPart.Position - bagPart.Position).Magnitude or 0
+                
+                if onScreen and distance <= 1000 then
+                    Text.Position = Vector2.new(vector.X, vector.Y)
+                    Text.Text = "Backpack [" .. math.floor(distance) .. "m]"
+                    Text.Color = _G.BackpackColor
+                    Text.Visible = _G.BackpackESP
+                else
+                    Text.Visible = false
+                end
+            end)
+            
+            -- Add error handling and reconnection
+            backpack.AncestryChanged:Connect(function(_, parent)
+                if not parent then
+                    if connection then connection:Disconnect() end
+                    Text:Remove()
+                    backpackCache[backpack] = nil
+                end
+            end)
+        end
+        
+        coroutine.wrap(Update)()
+    end
+    
+    -- Wrap initialization in pcall for error handling
+    pcall(initESP)
+end
+
+if workspace:FindFirstChild("DroppedPacks") then
+    workspace.DroppedPacks.ChildAdded:Connect(function(child)
+        if child.Name == "Backpack" then
+            task.wait(0.1)  -- Short delay to ensure model is loaded
+            createBackpackESP(child)
+        end
+    end)
+    
+    -- Initialize ESP for existing backpacks with retry
+    for _, backpack in ipairs(workspace.DroppedPacks:GetChildren()) do
+        if backpack.Name == "Backpack" then
+            task.spawn(function()
+                createBackpackESP(backpack)
+            end)
+        end
+    end
+end
+
+-- Add cleanup for chams when player leaves
+Players.PlayerRemoving:Connect(function(player)
+    local highlight = chamCache[player]
+    if highlight then
+        highlight:Destroy()
+        chamCache[player] = nil
+    end
+end)
+
+-- Update chams in the main render loop
+RunService.RenderStepped:Connect(function()
+    local currentTime = tick()
+    if currentTime - lastChamsUpdate < CHAMS_UPDATE_INTERVAL then return end
+    lastChamsUpdate = currentTime
+    
+    for _, player in ipairs(workspace.Players:GetChildren()) do
+        if player ~= LocalPlayer.Character then
+            applyChams(player)
+        end
+    end
+end)
+
+local isThirdPerson = false
+local thirdPersonKey = Enum.KeyCode.LeftAlt  -- Default key
+local thirdPersonDistance = 5  -- Default distance
+local thirdPersonEnabled = false
+local oldCameraSubject = nil
+local lastCameraType = nil
+
+local function updateThirdPerson()
+    if not LocalPlayer.Character then return end
+    
+    if thirdPersonEnabled then
+        if lastCameraType == nil then
+            lastCameraType = Camera.CameraType
+            oldCameraSubject = Camera.CameraSubject
+        end
+        
+        Camera.CameraType = Enum.CameraType.Custom
+        Camera.CameraSubject = LocalPlayer.Character:FindFirstChild("Humanoid")
+        
+        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            Camera.CFrame = CFrame.new(root.Position - Camera.CFrame.LookVector * thirdPersonDistance, root.Position)
+        end
+    else
+        if lastCameraType then
+            Camera.CameraType = lastCameraType
+            Camera.CameraSubject = oldCameraSubject
+            lastCameraType = nil
+            oldCameraSubject = nil
+        end
+    end
+end
+
+-- Add to Misc Tab after existing controls
+local ThirdPersonBox = Tabs.Misc:AddRightGroupbox('Third Person')
+
+ThirdPersonBox:AddToggle('ThirdPerson', {
+    Text = 'Third Person',
+    Default = false,
+    Tooltip = 'Toggle third person camera view',
+    Callback = function(value)
+        thirdPersonEnabled = value
+        if not value then
+            updateThirdPerson()
+        end
+    end
+})
+
+ThirdPersonBox:AddSlider('TPDistance', {
+    Text = 'Camera Distance',
+    Default = 5,
+    Min = 2,
+    Max = 20,
+    Rounding = 1,
+    Compact = false,
+    Callback = function(value)
+        thirdPersonDistance = value
+    end
+})
+
+ThirdPersonBox:AddInput('TPBind', {
+    Default = 'LeftAlt',
+    Numeric = false,
+    Text = 'Toggle Key',
+    Tooltip = 'Press a key to bind',
+    Placeholder = 'Key',
+    Callback = function(value)
+        thirdPersonKey = Enum.KeyCode[value:upper()]
+    end
+})
+
+-- Add before Library:Init()
+RunService.RenderStepped:Connect(function()
+    if thirdPersonEnabled then
+        updateThirdPerson()
+    end
+end)
+
+-- Handle keybind toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == thirdPersonKey then
+        thirdPersonEnabled = not thirdPersonEnabled
+        if not thirdPersonEnabled then
+            updateThirdPerson()
+        end
+        Library:Notify('Third Person ' .. (thirdPersonEnabled and "Enabled" or "Disabled"), 2)
+    end
+end)
+
+Library:Init()
