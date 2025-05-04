@@ -308,10 +308,17 @@ MainLeftBox:AddToggle('VisibilityCheck', {
     Callback = function(value) isVisibilityCheckEnabled = value end
 })
 
-MainLeftBox:AddButton('Toggle Target Part', function()
-    targetPart = (targetPart == "Head") and "UpperTorso" or "Head"
-    Library:Notify('Now aiming at: ' .. targetPart, 2)
-end)
+MainLeftBox:AddDropdown('TargetPartDropdown', {
+    Values = { 'Head', 'UpperTorso', 'HumanoidRootPart' },
+    Default = 1,
+    Multi = false,
+    Text = 'Target Part',
+    Tooltip = 'Choose which body part to aim at',
+    Callback = function(value)
+        targetPart = value
+        Library:Notify('Now aiming at: ' .. targetPart, 2)
+    end
+})
 
 MainRightBox:AddSlider('FOVAmount', {
     Text = 'FOV Size',
