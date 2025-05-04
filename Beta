@@ -13,6 +13,13 @@ local originalLightingSettings = {
     FogEnd = game.Lighting.FogEnd,
     FogStart = game.Lighting.FogStart
 }
+local transparencyValue = 0.9
+local xrayEnabled = false
+local keybindKey = Enum.KeyCode.X
+local folder = workspace:FindFirstChild("BuiltObjects")
+local excludedModels = {
+    "Large Storage Box", "Furnace", "Campfire", "Repair Bench", "Small Storage Box"
+}
 
 -- FOV settings
 local fovAmount = 120
@@ -303,6 +310,36 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+local function isExcluded(modelName)
+    for _, excludedName in ipairs(excludedModels) do
+        if modelName == excludedName then
+            return true
+        end
+    end
+    return false
+end
+
+local function setTransparency(model, transparency)
+    if typeof(transparency) ~= "number" then return end
+    for _, descendant in ipairs(model:GetDescendants()) do
+        if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
+            descendant.Transparency = transparency
+        end
+    end
+end
+
+local function updateXray()
+    if folder then
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and not isExcluded(model.Name) then
+                setTransparency(model, xrayEnabled and transparencyValue or 0)
+            end
+        end
+    else
+        warn("Folder not found in workspace.")
+    end
+end
+
 MainLeftBox:AddToggle('AimbotEnabled', {
     Text = 'Enable Aimbot',
     Default = false,
@@ -481,6 +518,42 @@ WorldLeftBox:AddToggle('Fullbright', {
 
 -- | All World Settings And Toggles Above | --
 
+MiscLeftBox:AddToggle('XRay', {
+    Text = 'XRay',
+    Default = false,
+    Callback = function(value)
+        xrayEnabled = value
+        updateXray()
+    end
+})
+
+MiscLeftBox:AddSlider('XRayTransparency', {
+    Text = 'XRay Transparency',
+    Default = 0.9,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Callback = function(value)
+        transparencyValue = value
+        if xrayEnabled then updateXray() end
+    end
+})
+
+MiscLeftBox:AddInput('XRayBind', {
+    Default = 'X',
+    Numeric = false,
+    Text = 'XRay Keybind',
+    Tooltip = 'Press a key to bind',
+    Placeholder = 'Key',
+    Callback = function(value)
+        keybindKey = Enum.KeyCode[value:upper()]
+    end
+})
+
+
+-- | All Misc Settings And Toggles Above | --
+
 UserInputService.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         rightMouseHeld = true
@@ -490,6 +563,14 @@ end)
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         rightMouseHeld = false
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.KeyCode == keybindKey and not gameProcessed then
+        xrayEnabled = not xrayEnabled
+        updateXray()
+        Library:Notify('Xray ' .. (xrayEnabled and "Enabled" or "Disabled"), 2)
     end
 end)
 
