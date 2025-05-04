@@ -5,6 +5,14 @@ local workspaceESP = {}
 local espBoxes = {}
 local chamsParts = {}
 local originalProperties = {}
+local originalLightingSettings = {
+    Brightness = game.Lighting.Brightness,
+    OutdoorAmbient = game.Lighting.OutdoorAmbient,
+    Ambient = game.Lighting.Ambient,
+    GlobalShadows = game.Lighting.GlobalShadows,
+    FogEnd = game.Lighting.FogEnd,
+    FogStart = game.Lighting.FogStart
+}
 
 -- FOV settings
 local fovAmount = 120
@@ -29,6 +37,7 @@ local isFOVVisible = true
 local isVisibilityCheckEnabled = false
 local showNames = false
 local espEnabled = false
+local isFullbrightEnabled = false
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -447,6 +456,30 @@ ESPLeftBox:AddToggle('Distance ESP', {
         end
     end
 })
+
+-- | All ESP Settings And Toggles Above | --
+
+WorldLeftBox:AddToggle('Fullbright', {
+    Text = 'Fullbright',
+    Default = false,
+    Callback = function(value)
+        isFullbrightEnabled = value
+        
+        if isFullbrightEnabled then
+            game.Lighting.Brightness = 2
+            game.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            game.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            game.Lighting.GlobalShadows = false
+        else
+            game.Lighting.Brightness = originalLightingSettings.Brightness
+            game.Lighting.OutdoorAmbient = originalLightingSettings.OutdoorAmbient
+            game.Lighting.Ambient = originalLightingSettings.Ambient
+            game.Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
+        end
+    end
+})
+
+-- | All World Settings And Toggles Above | --
 
 UserInputService.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
