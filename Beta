@@ -31,7 +31,7 @@ local chamsEnabled = false
 local rightMouseHeld = false
 local isFOVVisible = true
 local isVisibilityCheckEnabled = false
-
+local showNames = false
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -160,8 +160,10 @@ game:GetService("RunService").RenderStepped:Connect(function()
                         
                         if onScreen then
                             esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 40)
-                            esp.text.Text = string.format("%s\n[%d studs]", model.Name, distance)
-                            esp.text.Visible = true
+                            local nameText = showNames and model.Name or ""
+                            local distanceText = string.format("[%d studs]", distance)
+                            esp.text.Text = nameText ~= "" and (nameText .. "\n" .. distanceText) or distanceText
+                            esp.text.Visible = espEnabled and (showNames or distanceEnabled)
                             esp.highlight.Enabled = true
                         else
                             esp.text.Visible = false
@@ -414,6 +416,21 @@ ESPLeftBox:AddLabel('Chams Color'):AddColorPicker('Chams Color', {
     end
 })
 
+ESPLeftBox:AddToggle('Show Names', {
+    Text = 'Show Player Names',
+    Tooltip = 'Only works when ESP is also enabled',
+    Callback = function(state)
+        showNames = state
+        if not (espEnabled and showNames) then
+            for _, esp in pairs(workspaceESP) do
+                if esp.text then
+                    esp.text.Visible = false
+                end
+            end
+        end
+    end
+})
+
 -- Add workspace ESP toggle
 ESPLeftBox:AddToggle('Distance ESP', {
     Text = 'Distance ESP',
@@ -522,4 +539,3 @@ RunService.RenderStepped:Connect(function()
         Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
     end
 end)
-
