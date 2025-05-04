@@ -1,8 +1,3 @@
-
--- Core Variables (General)
-local espEnabled = false
-local teamCheck = false
-
 -- Visual Variables
 local espColor = Color3.fromRGB(255, 0, 0)
 local fovColor = Color3.fromRGB(255, 255, 255)
@@ -32,6 +27,7 @@ local rightMouseHeld = false
 local isFOVVisible = true
 local isVisibilityCheckEnabled = false
 local showNames = false
+local espEnabled = false
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -177,11 +173,12 @@ game:GetService("RunService").RenderStepped:Connect(function()
                                 esp.text.Visible = false
                             end
                         
-                            esp.highlight.Enabled = true
+                            -- ✅ Only show head highlight when BOTH toggles are on
+                            esp.highlight.Enabled = espEnabled and chamsEnabled
                         else
                             esp.text.Visible = false
                             esp.highlight.Enabled = false
-                        end                        
+                        end                                              
                     end
                 end
             end
@@ -412,19 +409,6 @@ ESPLeftBox:AddToggle('Chams', {
             end
             table.clear(chamsParts)
             table.clear(originalProperties)
-        end
-    end
-})
-
-ESPLeftBox:AddLabel('Chams Color'):AddColorPicker('Chams Color', {
-    Text = 'Chams Color',
-    Tooltip = 'Change chams color',
-    Default = Color3.fromRGB(255, 0, 0),
-    Callback = function(color)
-        for _, part in pairs(chamsParts) do
-            if part and part:IsA("BasePart") then
-                part.Color = color
-            end
         end
     end
 })
