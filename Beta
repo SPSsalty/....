@@ -160,15 +160,28 @@ game:GetService("RunService").RenderStepped:Connect(function()
                         
                         if onScreen then
                             esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 40)
-                            local nameText = showNames and model.Name or ""
-                            local distanceText = string.format("[%d studs]", distance)
-                            esp.text.Text = nameText ~= "" and (nameText .. "\n" .. distanceText) or distanceText
-                            esp.text.Visible = espEnabled and (showNames or distanceEnabled)
+                        
+                            local nameLine = (espEnabled and showNames) and model.Name or ""
+                            local distanceLine = (espEnabled and distanceEnabled) and string.format("[%d studs]", distance) or ""
+                        
+                            if nameLine ~= "" and distanceLine ~= "" then
+                                esp.text.Text = nameLine .. "\n" .. distanceLine
+                                esp.text.Visible = true
+                            elseif nameLine ~= "" then
+                                esp.text.Text = nameLine
+                                esp.text.Visible = true
+                            elseif distanceLine ~= "" then
+                                esp.text.Text = distanceLine
+                                esp.text.Visible = true
+                            else
+                                esp.text.Visible = false
+                            end
+                        
                             esp.highlight.Enabled = true
                         else
                             esp.text.Visible = false
                             esp.highlight.Enabled = false
-                        end
+                        end                        
                     end
                 end
             end
