@@ -516,6 +516,23 @@ WorldLeftBox:AddToggle('Fullbright', {
     end
 })
 
+WorldLeftBox:AddToggle('NoFog', {
+    Text = 'No Fog',
+    Default = false,
+    Tooltip = 'Removes fog by pushing it far away',
+    Callback = function(enabled)
+        if enabled then
+            game.Lighting.FogStart = 0
+            game.Lighting.FogEnd = 1e10
+            Library:Notify('Fog removed', 2)
+        else
+            game.Lighting.FogStart = originalLightingSettings.FogStart
+            game.Lighting.FogEnd = originalLightingSettings.FogEnd
+            Library:Notify('Fog restored', 2)
+        end
+    end
+})
+
 -- | All World Settings And Toggles Above | --
 
 MiscLeftBox:AddToggle('XRay', {
