@@ -501,10 +501,12 @@ local function GetClosestPlayer()
             if target and humanoid and humanoid.Health > 0 and IsInFov(target.Position) then
                 if teamCheck then
                     local plr = Players:FindFirstChild(model.Name)
-                    if plr and plr.Team == Players.LocalPlayer.Team then
+                    local localTeam = Players.LocalPlayer.Team
+                
+                    if plr and localTeam and plr.Team == localTeam then
                         continue
                     end
-                end
+                end                
 
                 local screenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
                 if onScreen then
