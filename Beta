@@ -510,13 +510,16 @@ local function GetClosestPlayer()
 end
 
 RunService.RenderStepped:Connect(function()
+    -- Early exit unless both aimbot is toggled AND right-click is held
     if not isAimbotEnabled or not rightMouseHeld then return end
 
     local target = GetClosestPlayer()
     if target then
-        local targetPos = target.Position
         local camPos = Camera.CFrame.Position
+        local targetPos = target.Position
         local newCFrame = CFrame.new(camPos, targetPos)
+
         Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
     end
 end)
+
