@@ -10,6 +10,7 @@ local originalProperties = {}
 local fovAmount = 120
 local teamCheck = false
 local targetPart = "Head"  -- Default target is Head
+local maxRenderDistance = 1000 -- Adjustable global max render distance
 
 -- FOV Circle
 local fovCircle = Drawing.new("Circle")
@@ -116,81 +117,74 @@ local function createWorkspaceESP(model)
     return esp
 end
 
--- Single ESP update loop
-game:GetService("RunService").RenderStepped:Connect(function()
-    pcall(function()
-        if espEnabled then
-            local camera = workspace.CurrentCamera
-            local localPlayer = game.Players.LocalPlayer
-            local character = localPlayer.Character
-            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-            local playersFolder = workspace:FindFirstChild("Players")
-            
-            if not playersFolder then return end
-            
-            -- Clean up invalid models
-            for model, esp in pairs(workspaceESP) do
-                if not model:IsDescendantOf(playersFolder) then
-                    esp.text:Remove()
-                    esp.highlight:Destroy()
-                    workspaceESP[model] = nil
+RunService.RenderStepped:Connect(function()
+    if not espEnabled then
+        for _, esp in pairs(workspaceESP) do
+            esp.text.Visible = false
+            esp.highlight.Enabled = false
+        end
+        return
+    end
+
+    local camera = workspace.CurrentCamera
+    local localPlayer = Players.LocalPlayer
+    local character = localPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local playersFolder = workspace:FindFirstChild("Players")
+
+    if not rootPart or not playersFolder then return end
+
+    for _, model in pairs(playersFolder:GetChildren()) do
+        if model.Name == localPlayer.Name then continue end
+
+        if not workspaceESP[model] then
+            workspaceESP[model] = createWorkspaceESP(model)
+        end
+
+        local esp = workspaceESP[model]
+        local head = model:FindFirstChild("Head", true)
+
+        if esp and head and head:IsA("MeshPart") then
+            local pos = head.Position
+            local screenPos, onScreen = camera:WorldToViewportPoint(pos)
+            local distance = (rootPart.Position - pos).Magnitude
+
+            if distance <= maxRenderDistance and onScreen then
+                esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 40)
+
+                local nameLine = showNames and model.Name or ""
+                local distanceLine = distanceEnabled and string.format("[%d studs]", math.floor(distance)) or ""
+
+                if nameLine ~= "" and distanceLine ~= "" then
+                    esp.text.Text = nameLine .. "\n" .. distanceLine
+                    esp.text.Visible = true
+                elseif nameLine ~= "" then
+                    esp.text.Text = nameLine
+                    esp.text.Visible = true
+                elseif distanceLine ~= "" then
+                    esp.text.Text = distanceLine
+                    esp.text.Visible = true
+                else
+                    esp.text.Visible = false
                 end
-            end
-            
-            -- Update ESP for existing models
-            for _, model in pairs(playersFolder:GetChildren()) do
-                -- Skip local player's model
-                if model.Name == localPlayer.Name then continue end
-                
-                if not workspaceESP[model] then
-                    createWorkspaceESP(model)
-                end
-                
-                local esp = workspaceESP[model]
-                if esp and rootPart then
-                    local head = model:FindFirstChild("Head", true)
-                    if head and head:IsA("MeshPart") then
-                        local pos = head.Position
-                        local screenPos, onScreen = camera:WorldToViewportPoint(pos)
-                        local distance = math.floor((rootPart.Position - pos).Magnitude)
-                        
-                        if onScreen then
-                            esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 40)
-                        
-                            local nameLine = (espEnabled and showNames) and model.Name or ""
-                            local distanceLine = (espEnabled and distanceEnabled) and string.format("[%d studs]", distance) or ""
-                        
-                            if nameLine ~= "" and distanceLine ~= "" then
-                                esp.text.Text = nameLine .. "\n" .. distanceLine
-                                esp.text.Visible = true
-                            elseif nameLine ~= "" then
-                                esp.text.Text = nameLine
-                                esp.text.Visible = true
-                            elseif distanceLine ~= "" then
-                                esp.text.Text = distanceLine
-                                esp.text.Visible = true
-                            else
-                                esp.text.Visible = false
-                            end
-                        
-                            -- ✅ Only show head highlight when BOTH toggles are on
-                            esp.highlight.Enabled = espEnabled and chamsEnabled
-                        else
-                            esp.text.Visible = false
-                            esp.highlight.Enabled = false
-                        end                                              
-                    end
-                end
-            end
-        else
-            -- Hide all ESP when disabled
-            for _, esp in pairs(workspaceESP) do
+
+                esp.highlight.Enabled = chamsEnabled
+            else
                 esp.text.Visible = false
                 esp.highlight.Enabled = false
             end
         end
-    end)
+    end
+
+    for model, esp in pairs(workspaceESP) do
+        if not model:IsDescendantOf(playersFolder) then
+            if esp.text then esp.text:Remove() end
+            if esp.highlight then esp.highlight:Destroy() end
+            workspaceESP[model] = nil
+        end
+    end
 end)
+
 
 -- Add death handling functions
 local function removeEspBox(player)
@@ -258,42 +252,46 @@ local function applyChams(player)
     end
 end
 
--- Add Chams update loop
-game:GetService("RunService").RenderStepped:Connect(function()
-    if chamsEnabled then
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= game.Players.LocalPlayer then
-                applyChams(player)
+RunService.RenderStepped:Connect(function()
+    if not chamsEnabled then return end
+
+    local localCharacter = Players.LocalPlayer.Character
+    local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == Players.LocalPlayer then continue end
+        local character = player.Character
+        if not character or not character:FindFirstChild("HumanoidRootPart") then continue end
+
+        -- Team check
+        if teamCheck and player.Team == Players.LocalPlayer.Team then continue end
+
+        local distance = (localRoot.Position - character.HumanoidRootPart.Position).Magnitude
+        if distance > maxRenderDistance then continue end
+
+        -- Apply Chams to character parts
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                -- Save original properties only once
+                if not originalProperties[part] then
+                    originalProperties[part] = {
+                        Material = part.Material,
+                        Color = part.Color,
+                        Transparency = part.Transparency
+                    }
+                end
+
+                -- Apply chams color/material once
+                if not table.find(chamsParts, part) then
+                    part.Material = Enum.Material.ForceField
+                    part.Color = espColor
+                    part.Transparency = 0.6
+                    table.insert(chamsParts, part)
+                end
             end
         end
     end
-end)
-
--- Add cleanup on script end
-game:GetService("Players").LocalPlayer.Destroying:Connect(function()
-    pcall(function()
-        for _, box in pairs(espBoxes) do
-            if box.outline then box.outline:Remove() end
-            if box.text then box.text:Remove() end
-        end
-        
-        -- Restore original properties for chams
-        for part, props in pairs(originalProperties) do
-            if part and part:IsA("BasePart") then
-                part.Material = props.Material
-                part.Color = props.Color
-                part.Transparency = props.Transparency
-            end
-        end
-
-        -- Clean up workspace ESP
-        for _, esp in pairs(workspaceESP) do
-            esp.text:Remove()
-            esp.highlight:Destroy()
-        end
-        workspaceESP = {}
-        
-    end)
 end)
 
 MainLeftBox:AddToggle('AimbotEnabled', {
