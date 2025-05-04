@@ -1,65 +1,20 @@
-local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
 
-local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
-local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
-local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+-- Core Variables (General)
+local espEnabled = false
+local teamCheck = false
 
--- Services
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+-- Visual Variables
+local espColor = Color3.fromRGB(255, 0, 0)
+local fovColor = Color3.fromRGB(255, 255, 255)
+local workspaceESP = {}
+local espBoxes = {}
+local chamsParts = {}
+local originalProperties = {}
 
 -- FOV settings
 local fovAmount = 120
 local teamCheck = false
 local targetPart = "Head"  -- Default target is Head
-
--- Variables
-local isRunning = false
-local FastReload = nil
-
--- ESP settings
-_G.BoxESP = false
-_G.Tracers = false
-_G.PlayerNames = false
-_G.Distance = false
-_G.ESPColor = Color3.fromRGB(255, 255, 0)  -- Changed to yellow
-_G.TextSize = 20  -- New larger text size
-_G.Chams = false
-_G.ChamsColor = Color3.fromRGB(255, 0, 0)  -- Default red color for chams
-_G.HealthText = false  -- Add health text setting
-_G.HealthBar = false   -- Add health bar setting
-_G.BackpackESP = false
-_G.BackpackColor = Color3.fromRGB(255, 0, 0)  -- Red color for backpacks
-_G.OreESP = false
-_G.OreDistance = 1000  -- Maximum distance for ore ESP
-_G.OreColor = Color3.fromRGB(255, 170, 0)  -- Orange color for ores
-_G.ClothESP = false
-_G.ClothDistance = 1000  -- Maximum distance for cloth ESP
-_G.ClothColor = Color3.fromRGB(0, 255, 0)  -- Green color for cloth
-
--- Add this near other ESP settings
-local allowedOres = {
-    ["Brimstone Ore"] = true,
-    ["Brimstone Ore Sand"] = true,
-    ["Stone Ore"] = true,
-    ["Iron Ore"] = true,
-    ["Stone Ore Sand"] = true,
-    ["Iron Ore Sand"] = true
-}
-
--- Convert allowedOres to array format for dropdown
-local oreTypes = {}
-local initialOreSelection = {}
-for oreName, enabled in pairs(allowedOres) do
-    table.insert(oreTypes, oreName)
-    if enabled then
-        table.insert(initialOreSelection, oreName)
-    end
-end
 
 -- FOV Circle
 local fovCircle = Drawing.new("Circle")
@@ -72,761 +27,27 @@ fovCircle.Position = Vector2.new(0, 0)
 
 -- Toggle states
 local isAimbotEnabled = false
-local isESPEnabled = false
-local isVisibilityCheckEnabled = false  -- Added new toggle state
-local isFullbrightEnabled = false  -- Fullbright toggle state
-local isNoFogEnabled = false  -- No Fog toggle state
-local fogUpdateConnection = nil  -- Add this near other toggle states
+local chamsEnabled = false
+local rightMouseHeld = false
+local isFOVVisible = true
+local isVisibilityCheckEnabled = false
+
+
+--Aimbot Settings
 local smoothness = 1 -- Default smoothness value
-local isFOVVisible = true -- Add this near other toggle states
-local isTpWalking = false
-local tpwalking = false
-local jumping = false
-local TPWalkSpeed = 0
-local isHitboxExpander = false
-local expanderConnection = nil
-local hitboxSize = 0  -- Add this new variable
-local hitboxTransparency = 0  -- Add this new variable
-local isCrosshairEnabled = false
-local crosshairSize = 8
-local crosshairThickness = 1.5
-local crosshairColor = Color3.fromRGB(255, 255, 255)
-
--- Near toggle states
-local isThirdPerson = false
-local thirdPersonKey = Enum.KeyCode.LeftAlt
-local thirdPersonDistance = 2
-local oldCameraType = nil
-local oldCameraSubject = nil
-
--- Default keybind for Aimbot
 local aimbotKey = Enum.KeyCode.F
 
--- Replace the zoom variables
-local defaultFOV = workspace.CurrentCamera.FieldOfView
-local zoomEnabled = true
-local zoomKey = Enum.KeyCode.C
-local zoomFOV = 15
-local isZooming = false
-local lastZoomState = false
+local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
 
--- Add these performance optimization variables at the top
-local ESP_UPDATE_INTERVAL = 1  -- Update ESP every 0.1 seconds
-local lastESPUpdate = 0
-local cachedParts = {}
-local FOV_UPDATE_INTERVAL = 0.016
-local lastFOVUpdate = 0
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
--- Add these near other variables at the top
-local currentCharacter = nil
-
--- Add near other variables at the top
-local chamCache = {}
-local CHAMS_UPDATE_INTERVAL = 0.1
-local lastChamsUpdate = 0
-
-local crosshairLines = {
-    left = Drawing.new("Line"),
-    right = Drawing.new("Line"),
-    top = Drawing.new("Line"),
-    bottom = Drawing.new("Line")
-}
-
-for _, line in pairs(crosshairLines) do
-    line.Visible = false
-    line.Thickness = crosshairThickness
-    line.Color = crosshairColor
-end
-
-local function setupCharacter(char)
-    if not char then return end
-    currentCharacter = char
-    
-    -- Set up death handling
-    local humanoid = char:WaitForChild("Humanoid", 3)
-    if humanoid then
-        humanoid.Died:Connect(function()
-            currentCharacter = nil
-        end)
-    end
-end
-
--- Add this new function to handle walk speed updates
-local function updateWalkSpeed(humanoid)
-    if not humanoid then return end
-    
-    humanoid.WalkSpeed = defaultWalkSpeed or 16
-end
-
-local scripts = {
-    function() --Revolver
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 1,
-            [4] = "Pistol Ammunition",
-            [5] = 33,
-            [6] = 22,
-            [7] = 12,
-            [8] = 7,
-            [9] = 37,
-            [10] = 43,
-            [11] = 16,
-            [12] = 12,
-            [13] = 39,
-            [14] = 21,
-            [15] = 10,
-            [16] = 50,
-            [17] = 6,
-            [18] = 40,
-            [19] = 28,
-            [20] = 36,
-            [21] = 21,
-            [22] = 16,
-            [23] = 2,
-            [24] = 7,
-            [25] = 6,
-            [26] = 24,
-            [27] = 30,
-            [28] = 27,
-            [29] = 3,
-            [30] = 10,
-            [31] = 15,
-            [32] = 34,
-            [33] = 49,
-            [34] = 47,
-            [35] = 33,
-            [36] = 24,
-            [37] = 33,
-            [38] = 15,
-            [39] = 10,
-            [40] = 7,
-            [41] = 29,
-            [42] = 17,
-            [43] = 36,
-            [44] = 27,
-            [45] = 13,
-            [46] = 15,
-            [47] = 2,
-            [48] = 35,
-            [49] = 17,
-            [50] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-    
-    function() --BOW WOODEN ARROW
-        local args = {
-            [1] = "Weapon Insert Bullet",
-            [2] = false,
-            [3] = 2,
-            [4] = "Wood Arrow",
-            [5] = 16,
-            [6] = 49,
-            [7] = 40,
-            [8] = 36,
-            [9] = 3,
-            [10] = 43,
-            [11] = 9,
-            [12] = 30,
-            [13] = 39,
-            [14] = 25,
-            [15] = 48,
-            [16] = 44,
-            [17] = 47,
-            [18] = 8,
-            [19] = 5,
-            [20] = 15,
-            [21] = 8,
-            [22] = 46,
-            [23] = 35,
-            [24] = 14,
-            [25] = 8,
-            [26] = 20,
-            [27] = 41,
-            [28] = 15,
-            [29] = 31,
-            [30] = 45,
-            [31] = 46,
-            [32] = 15,
-            [33] = 45,
-            [34] = 24,
-            [35] = 32,
-            [36] = 8,
-            [37] = 26,
-            [38] = 49,
-            [39] = 3,
-            [40] = 46,
-            [41] = 5,
-            [42] = 7,
-            [43] = 43,
-            [44] = 17,
-            [45] = 42,
-            [46] = 50,
-            [47] = 9,
-            [48] = 3,
-            [49] = 42,
-            [50] = 21,
-            [51] = 19,
-            [52] = 6,
-            [53] = 18,
-            [54] = 22,
-            [55] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-    
-    function() --bow stone arrow
-        local args = {
-            [1] = "Weapon Insert Bullet",
-            [2] = false,
-            [3] = 2,
-            [4] = "Stone Arrow",
-            [5] = 16,
-            [6] = 49,
-            [7] = 40,
-            [8] = 36,
-            [9] = 3,
-            [10] = 43,
-            [11] = 9,
-            [12] = 30,
-            [13] = 39,
-            [14] = 25,
-            [15] = 48,
-            [16] = 44,
-            [17] = 47,
-            [18] = 8,
-            [19] = 5,
-            [20] = 15,
-            [21] = 8,
-            [22] = 46,
-            [23] = 35,
-            [24] = 14,
-            [25] = 8,
-            [26] = 20,
-            [27] = 41,
-            [28] = 15,
-            [29] = 31,
-            [30] = 45,
-            [31] = 46,
-            [32] = 15,
-            [33] = 45,
-            [34] = 24,
-            [35] = 32,
-            [36] = 8,
-            [37] = 26,
-            [38] = 49,
-            [39] = 3,
-            [40] = 46,
-            [41] = 5,
-            [42] = 7,
-            [43] = 43,
-            [44] = 17,
-            [45] = 42,
-            [46] = 50,
-            [47] = 9,
-            [48] = 3,
-            [49] = 42,
-            [50] = 21,
-            [51] = 19,
-            [52] = 6,
-            [53] = 18,
-            [54] = 22,
-            [55] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-        
-    function() --m92
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 1,
-            [4] = "Pistol Ammunition",
-            [5] = 8,
-            [6] = 15,
-            [7] = 21,
-            [8] = 41,
-            [9] = 36,
-            [10] = 4,
-            [11] = 40,
-            [12] = 37,
-            [13] = 12,
-            [14] = 28,
-            [15] = 34,
-            [16] = 14,
-            [17] = 44,
-            [18] = 46,
-            [19] = 4,
-            [20] = 4,
-            [21] = 49,
-            [22] = 31,
-            [23] = 42,
-            [24] = 3,
-            [25] = 41,
-            [26] = 29,
-            [27] = 21,
-            [28] = 47,
-            [29] = 35,
-            [30] = 37,
-            [31] = 14,
-            [32] = 4,
-            [33] = 47,
-            [34] = 22,
-            [35] = 41,
-            [36] = 50,
-            [37] = 15,
-            [38] = 31,
-            [39] = 6,
-            [40] = 23,
-            [41] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-        
-    function() --db
-        local args = {
-            [1] = "Weapon Insert Bullet",
-            [2] = false,
-            [3] = 6,
-            [4] = "Buckshot Ammunition",
-            [5] = 43,
-            [6] = 31,
-            [7] = 39,
-            [8] = 17,
-            [9] = 33,
-            [10] = 17,
-            [11] = 35,
-            [12] = 42,
-            [13] = 37,
-            [14] = 10,
-            [15] = 9,
-            [16] = 34,
-            [17] = 40,
-            [18] = 36,
-            [19] = 22,
-            [20] = 33,
-            [21] = 31,
-            [22] = 26,
-            [23] = 26,
-            [24] = 4,
-            [25] = 2,
-            [26] = 6,
-            [27] = 29,
-            [28] = 43,
-            [29] = 1,
-            [30] = 17,
-            [31] = 46,
-            [32] = 1,
-            [33] = 22,
-            [34] = 5,
-            [35] = 34,
-            [36] = 38,
-            [37] = 41,
-            [38] = 29,
-            [39] = 41,
-            [40] = 1,
-            [41] = 25,
-            [42] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-        
-    function() --crossy stone arrow
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 1,
-            [4] = "Stone Arrow",
-            [5] = 9,
-            [6] = 39,
-            [7] = 36,
-            [8] = 15,
-            [9] = 14,
-            [10] = 24,
-            [11] = 34,
-            [12] = 47,
-            [13] = 10,
-            [14] = 44,
-            [15] = 32,
-            [16] = 29,
-            [17] = 35,
-            [18] = 49,
-            [19] = 23,
-            [20] = 17,
-            [21] = 43,
-            [22] = 32,
-            [23] = 6,
-            [24] = 45,
-            [25] = 49,
-            [26] = 5,
-            [27] = 37,
-            [28] = 35,
-            [29] = 13,
-            [30] = 31,
-            [31] = 5,
-            [32] = 50,
-            [33] = 45,
-            [34] = 3,
-            [35] = 8,
-            [36] = 4,
-            [37] = 2,
-            [38] = 31,
-            [39] = 40,
-            [40] = 43,
-            [41] = 26,
-            [42] = 44,
-            [43] = 34,
-            [44] = 11,
-            [45] = 37,
-            [46] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-        
-    function() --Crossy wood arrow
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 4,
-            [4] = "Wood Arrow",
-            [5] = 30,
-            [6] = 5,
-            [7] = 13,
-            [8] = 26,
-            [9] = 1,
-            [10] = 14,
-            [11] = 26,
-            [12] = 45,
-            [13] = 49,
-            [14] = 27,
-            [15] = 39,
-            [16] = 18,
-            [17] = 32,
-            [18] = 26,
-            [19] = 19,
-            [20] = 3,
-            [21] = 1,
-            [22] = 48,
-            [23] = 19,
-            [24] = 43,
-            [25] = 8,
-            [26] = 20,
-            [27] = 31,
-            [28] = 46,
-            [29] = 27,
-            [30] = 28,
-            [31] = 37,
-            [32] = 49,
-            [33] = 1,
-            [34] = 42,
-            [35] = 2,
-            [36] = 13,
-            [37] = 6,
-            [38] = 26,
-            [39] = 3,
-            [40] = 20,
-            [41] = 18,
-            [42] = 40,
-            [43] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-        
-    function() -- mp5
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 3,
-            [4] = "Pistol Ammunition",
-            [5] = 4,
-            [6] = 12,
-            [7] = 19,
-            [8] = 32,
-            [9] = 33,
-            [10] = 12,
-            [11] = 45,
-            [12] = 35,
-            [13] = 3,
-            [14] = 30,
-            [15] = 42,
-            [16] = 49,
-            [17] = 21,
-            [18] = 2,
-            [19] = 38,
-            [20] = 29,
-            [21] = 19,
-            [22] = 5,
-            [23] = 18,
-            [24] = 9,
-            [25] = 3,
-            [26] = 19,
-            [27] = 4,
-            [28] = 35,
-            [29] = 8,
-            [30] = 9,
-            [31] = 41,
-            [32] = 48,
-            [33] = 18,
-            [34] = 47,
-            [35] = 28,
-            [36] = 1,
-            [37] = 11,
-            [38] = 49,
-            [39] = 36,
-            [40] = 42,
-            [41] = 4,
-            [42] = 9,
-            [43] = 49,
-            [44] = 25,
-            [45] = 39,
-            [46] = 4,
-            [47] = 44,
-            [48] = 36,
-            [49] = 25,
-            [50] = 1,
-            [51] = 37,
-            [52] = 37,
-            [53] = 22,
-            [54] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-        
-    function() -- AKM
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 6,
-            [4] = "Rifle Ammunition",
-            [5] = 18,
-            [6] = 4,
-            [7] = 47,
-            [8] = 13,
-            [9] = 15,
-            [10] = 13,
-            [11] = 11,
-            [12] = 7,
-            [13] = 47,
-            [14] = 27,
-            [15] = 19,
-            [16] = 22,
-            [17] = 37,
-            [18] = 33,
-            [19] = 50,
-            [20] = 32,
-            [21] = 37,
-            [22] = 12,
-            [23] = 43,
-            [24] = 35,
-            [25] = 38,
-            [26] = 15,
-            [27] = 26,
-            [28] = 31,
-            [29] = 16,
-            [30] = 27,
-            [31] = 31,
-            [32] = 41,
-            [33] = 18,
-            [34] = 34,
-            [35] = 2,
-            [36] = 37,
-            [37] = 27,
-            [38] = 21,
-            [39] = 43,
-            [40] = 40,
-            [41] = 16,
-            [42] = 48,
-            [43] = 22,
-            [44] = 2,
-            [45] = 46,
-            [46] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-    
-    function() -- AKS-74U
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 4,
-            [4] = "Rifle Ammunition",
-            [5] = 2,
-            [6] = 19,
-            [7] = 2,
-            [8] = 3,
-            [9] = 18,
-            [10] = 44,
-            [11] = 47,
-            [12] = 17,
-            [13] = 48,
-            [14] = 35,
-            [15] = 14,
-            [16] = 29,
-            [17] = 30,
-            [18] = 28,
-            [19] = 25,
-            [20] = 28,
-            [21] = 20,
-            [22] = 41,
-            [23] = 24,
-            [24] = 3,
-            [25] = 6,
-            [26] = 8,
-            [27] = 39,
-            [28] = 37,
-            [29] = 35,
-            [30] = 7,
-            [31] = 47,
-            [32] = 19,
-            [33] = 36,
-            [34] = 24,
-            [35] = 18,
-            [36] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end, 
-
-    function() -- KEDR  
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 5,
-            [4] = "Pistol Ammunition",
-            [5] = 38,
-            [6] = 27,
-            [7] = 50,
-            [8] = 1,
-            [9] = 32,
-            [10] = 4,
-            [11] = 17,
-            [12] = 9,
-            [13] = 34,
-            [14] = 50,
-            [15] = 20,
-            [16] = 8,
-            [17] = 18,
-            [18] = 35,
-            [19] = 22,
-            [20] = 18,
-            [21] = 9,
-            [22] = 13,
-            [23] = 2,
-            [24] = 34,
-            [25] = 3,
-            [26] = 25,
-            [27] = 49,
-            [28] = 32,
-            [29] = 9,
-            [30] = 14,
-            [31] = 36,
-            [32] = 48,
-            [33] = 44,
-            [34] = 38,
-            [35] = 43,
-            [36] = 3,
-            [37] = 5,
-            [38] = 19,
-            [39] = 4,
-            [40] = 46,
-            [41] = 6,
-            [42] = 20,
-            [43] = 46,
-            [44] = 7,
-            [45] = 22,
-            [46] = 2,
-            [47] = 38,
-            [48] = 43,
-            [49] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-     
-    function() --APC9K
-        local args = {
-            [1] = "Weapon Reload",
-            [2] = false,
-            [3] = 3,
-            [4] = "Pistol Ammunition",
-            [5] = 50,
-            [6] = 50,
-            [7] = 6,
-            [8] = 35,
-            [9] = 50,
-            [10] = 3,
-            [11] = 1,
-            [12] = 14,
-            [13] = 18,
-            [14] = 18,
-            [15] = 2,
-            [16] = 23,
-            [17] = 4,
-            [18] = 5,
-            [19] = 9,
-            [20] = 5,
-            [21] = 47,
-            [22] = 5,
-            [23] = 48,
-            [24] = 50,
-            [25] = 39,
-            [26] = 44,
-            [27] = 11,
-            [28] = 6,
-            [29] = 27,
-            [30] = 16,
-            [31] = 44,
-            [32] = 43,
-            [33] = 29,
-            [34] = 26,
-            [35] = 46,
-            [36] = 29,
-            [37] = 49,
-            [38] = 21,
-            [39] = 2,
-            [40] = 12,
-            [41] = 49,
-            [42] = 2
-        }
-        
-        game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
-        
-    end,
-     
-    function() --M249
-        -- Your script 2 code here
-    end
-}
-
--- Function to run all scripts
-local function runAllScripts()
-    for i, scriptFunc in ipairs(scripts) do
-        pcall(function()
-            scriptFunc()
-        end)
-    end
-end
+-- Services
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
 -- Create window
 local Window = Library:CreateWindow({
@@ -849,91 +70,219 @@ local Tabs = {
 local MainLeftBox = Tabs.Main:AddLeftGroupbox('Aimbot')
 local MainRightBox = Tabs.Main:AddRightGroupbox('FOV Settings')
 local MainCrosshairBox = Tabs.Main:AddRightGroupbox('Crosshair')
-local MainHitboxBox = Tabs.Main:AddLeftGroupbox("Hitbox Expander") -- New group box for hitbox expander
+local MainHitboxBox = Tabs.Main:AddLeftGroupbox("Hitbox Expander")
+local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Settings')
+local WeaponsLeftBox = Tabs.WeaponsTab:AddLeftGroupbox("Fast Reload")
+local WorldLeftBox = Tabs.World:AddLeftGroupbox('World Settings')
+local MiscLeftBox = Tabs.Misc:AddLeftGroupbox('Miscellaneous')
+local MovementBox = Tabs.Misc:AddRightGroupbox('Another Miscellaneous')
+local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+local ThirdPersonBox = Tabs.Misc:AddRightGroupbox('Third Person')
+local NoclipBox = Tabs.Misc:AddRightGroupbox('Noclip')
 
--- Add hitbox expander to Main tab
-MainHitboxBox:AddToggle('HitboxExpander', {
-    Text = 'Hitbox Expander',
-    Default = false,
-    Tooltip = 'Expands enemy and helicopter hitboxes',
-    Callback = function(value)
-        isHitboxExpander = value
-        
-        if expanderConnection then
-            expanderConnection:Disconnect()
-            expanderConnection = nil
-            -- Reset all hitboxes when disabled
-            for _, player in ipairs(workspace.Players:GetChildren()) do
-                if player ~= LocalPlayer.Character then
-                    local head = player:FindFirstChild("Head")
-                    if head then
-                        head.Size = Vector3.new(1, 1, 1)
-                        head.Transparency = 0
-                    end
+-- Initialize Drawing objects after UI
+local success, Drawing = pcall(function() return Drawing end)
+if not success then
+    warn("Drawing API not available")
+    return
+end
+
+local crosshair = {
+    horizontal = Drawing.new("Line"),
+    vertical = Drawing.new("Line")
+}
+
+-- Update workspace ESP functions
+local function createWorkspaceESP(model)
+    local head = model:FindFirstChild("Head", true)
+    if not head or not head:IsA("MeshPart") then return end
+    
+    local esp = {
+        text = Drawing.new("Text"),
+        highlight = Instance.new("Highlight")
+    }
+    
+    esp.text.Size = 16
+    esp.text.Center = true
+    esp.text.Outline = true
+    esp.text.Visible = false
+    esp.text.Color = espColor
+    
+    esp.highlight.FillColor = espColor
+    esp.highlight.OutlineColor = Color3.new(1, 1, 1)
+    esp.highlight.FillTransparency = 0.5
+    esp.highlight.OutlineTransparency = 0
+    esp.highlight.Enabled = false
+    esp.highlight.Adornee = head
+    esp.highlight.Parent = game:GetService("CoreGui")
+    
+    workspaceESP[model] = esp
+    return esp
+end
+
+-- Single ESP update loop
+game:GetService("RunService").RenderStepped:Connect(function()
+    pcall(function()
+        if espEnabled then
+            local camera = workspace.CurrentCamera
+            local localPlayer = game.Players.LocalPlayer
+            local character = localPlayer.Character
+            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+            local playersFolder = workspace:FindFirstChild("Players")
+            
+            if not playersFolder then return end
+            
+            -- Clean up invalid models
+            for model, esp in pairs(workspaceESP) do
+                if not model:IsDescendantOf(playersFolder) then
+                    esp.text:Remove()
+                    esp.highlight:Destroy()
+                    workspaceESP[model] = nil
                 end
             end
             
-            -- Reset helicopter hitbox
-            local heli = workspace:FindFirstChild("ActiveRaiderX")
-            if heli and heli:FindFirstChild("Base") then
-                heli.Base.Size = Vector3.new(1, 1, 1)
-                heli.Base.Transparency = 0
-            end
-        end
-        
-        if value then
-            expanderConnection = RunService.Heartbeat:Connect(function()
-                -- Expand player hitboxes
-                for _, player in ipairs(workspace.Players:GetChildren()) do
-                    if player ~= LocalPlayer.Character then
-                        local head = player:FindFirstChild("Head")
-                        if head then
-                            head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-                            head.Transparency = hitboxTransparency
-                            head.Massless = true
-                            head.CanCollide = false
+            -- Update ESP for existing models
+            for _, model in pairs(playersFolder:GetChildren()) do
+                -- Skip local player's model
+                if model.Name == localPlayer.Name then continue end
+                
+                if not workspaceESP[model] then
+                    createWorkspaceESP(model)
+                end
+                
+                local esp = workspaceESP[model]
+                if esp and rootPart then
+                    local head = model:FindFirstChild("Head", true)
+                    if head and head:IsA("MeshPart") then
+                        local pos = head.Position
+                        local screenPos, onScreen = camera:WorldToViewportPoint(pos)
+                        local distance = math.floor((rootPart.Position - pos).Magnitude)
+                        
+                        if onScreen then
+                            esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 40)
+                            esp.text.Text = string.format("%s\n[%d studs]", model.Name, distance)
+                            esp.text.Visible = true
+                            esp.highlight.Enabled = true
+                        else
+                            esp.text.Visible = false
+                            esp.highlight.Enabled = false
                         end
                     end
                 end
-                
-                -- Expand helicopter hitbox
-                local heli = workspace:FindFirstChild("ActiveRaiderX")
-                if heli and heli:FindFirstChild("Base") then
-                    heli.Base.Size = heliHitboxSize
-                    heli.Base.Transparency = hitboxTransparency
-                    heli.Base.Massless = true
-                    heli.Base.CanCollide = false
-                end
+            end
+        else
+            -- Hide all ESP when disabled
+            for _, esp in pairs(workspaceESP) do
+                esp.text.Visible = false
+                esp.highlight.Enabled = false
+            end
+        end
+    end)
+end)
+
+-- Add death handling functions
+local function removeEspBox(player)
+    if espBoxes[player] then
+        pcall(function()
+            espBoxes[player].outline:Remove()
+            espBoxes[player].text:Remove()
+            espBoxes[player] = nil
+        end)
+    end
+end
+
+local function setupDeathHandler(player)
+    if player.Character then
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid.Died:Connect(function()
+                removeEspBox(player)
             end)
         end
     end
-})
+end
 
-MainHitboxBox:AddSlider('HitboxSize', {
-    Text = 'Hitbox Size',
-    Default = 0,
-    Min = 0,
-    Max = 50,
-    Rounding = 1,
-    Compact = false,
-    Tooltip = 'Adjust hitbox size',
-    Callback = function(value)
-        hitboxSize = value
-    end
-})
+-- Add character handlers after ESP creation
+game.Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        setupDeathHandler(player)
+    end)
+end)
 
-MainHitboxBox:AddSlider('HitboxTransparency', {
-    Text = 'Hitbox Transparency',
-    Default = 0,
-    Min = 0,
-    Max = 1,
-    Rounding = 2,
-    Compact = false,
-    Tooltip = 'Adjust hitbox transparency',
-    Callback = function(value)
-        hitboxTransparency = value
+game.Players.PlayerRemoving:Connect(function(player)
+    removeEspBox(player)
+end)
+
+-- Setup existing players
+for _, player in pairs(game.Players:GetPlayers()) do
+    if player ~= game.Players.LocalPlayer then
+        setupDeathHandler(player)
+        player.CharacterAdded:Connect(function(character)
+            setupDeathHandler(player)
+        end)
     end
-})
+end
+
+-- Add Chams function
+local function applyChams(player)
+    if not player.Character then return end
+    if teamCheck and player.Team == game.Players.LocalPlayer.Team then return end
+    
+    for _, part in pairs(player.Character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            if not originalProperties[part] then
+                originalProperties[part] = {
+                    Material = part.Material,
+                    Color = part.Color,
+                    Transparency = part.Transparency
+                }
+            end
+            
+            part.Material = Enum.Material.ForceField
+            part.Color = espColor
+            part.Transparency = 0.6
+            table.insert(chamsParts, part)
+        end
+    end
+end
+
+-- Add Chams update loop
+game:GetService("RunService").RenderStepped:Connect(function()
+    if chamsEnabled then
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if player ~= game.Players.LocalPlayer then
+                applyChams(player)
+            end
+        end
+    end
+end)
+
+-- Add cleanup on script end
+game:GetService("Players").LocalPlayer.Destroying:Connect(function()
+    pcall(function()
+        for _, box in pairs(espBoxes) do
+            if box.outline then box.outline:Remove() end
+            if box.text then box.text:Remove() end
+        end
+        
+        -- Restore original properties for chams
+        for part, props in pairs(originalProperties) do
+            if part and part:IsA("BasePart") then
+                part.Material = props.Material
+                part.Color = props.Color
+                part.Transparency = props.Transparency
+            end
+        end
+
+        -- Clean up workspace ESP
+        for _, esp in pairs(workspaceESP) do
+            esp.text:Remove()
+            esp.highlight:Destroy()
+        end
+        workspaceESP = {}
+        
+    end)
+end)
 
 MainLeftBox:AddToggle('AimbotEnabled', {
     Text = 'Enable Aimbot',
@@ -954,24 +303,12 @@ MainLeftBox:AddButton('Toggle Target Part', function()
     Library:Notify('Now aiming at: ' .. targetPart, 2)
 end)
 
-MainLeftBox:AddInput('AimbotBind', {
-    Default = 'F',
-    Numeric = false,
-    Finished = false,
-    Text = 'Aimbot Keybind',
-    Tooltip = 'Press a key to bind',
-    Placeholder = 'Key',
-    Callback = function(value)
-        aimbotKey = Enum.KeyCode[value:upper()]
-    end
-})
-
 MainRightBox:AddSlider('FOVAmount', {
     Text = 'FOV Size',
     Default = 120,
     Min = 20,
     Max = 1000,
-    Rounding = 0,
+    Rounding = 1,
     Compact = false,
     Callback = function(value)
         fovAmount = value
@@ -1007,2100 +344,179 @@ MainRightBox:AddLabel('FOV Color'):AddColorPicker('FOVColor', {
     end
 })
 
-MainCrosshairBox:AddToggle('CrosshairEnabled', {
-    Text = 'Show Crosshair',
-    Default = false,
-    Tooltip = 'Toggle custom crosshair',
-    Callback = function(value)
-        isCrosshairEnabled = value
-        for _, line in pairs(crosshairLines) do
-            line.Visible = value
+-- Aimbot | FOV | Toggle Part | Stuff Above --
+
+ESPLeftBox:AddToggle('ESP Toggle', {
+    Text = 'ESP Toggle',
+    Tooltip = 'Turn on or off ESP',
+    Callback = function(state)
+        espEnabled = state
+        if not state then
+            for _, esp in pairs(workspaceESP) do
+                esp.text.Visible = false
+                esp.highlight.Enabled = false
+            end
         end
     end
 })
 
-MainCrosshairBox:AddSlider('CrosshairSize', {
-    Text = 'Size',
-    Default = 8,
-    Min = 2,
-    Max = 50,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(value)
-        crosshairSize = value
-    end
-})
-
-MainCrosshairBox:AddSlider('CrosshairThickness', {
-    Text = 'Thickness',
-    Default = 1.5,
-    Min = 0.5,
-    Max = 5,
-    Rounding = 1,
-    Compact = false,
-    Callback = function(value)
-        crosshairThickness = value
-        for _, line in pairs(crosshairLines) do
-            line.Thickness = value
+ESPLeftBox:AddLabel('ESP Color'):AddColorPicker('ESP Color', {
+    Text = 'ESP Color',
+    Tooltip = 'Change ESP color',
+    Default = Color3.fromRGB(255, 0, 0),
+    Callback = function(color)
+        espColor = color
+        for _, esp in pairs(workspaceESP) do
+            esp.text.Color = color
+            esp.highlight.FillColor = color
         end
     end
 })
 
-MainCrosshairBox:AddLabel('Crosshair Color'):AddColorPicker('CrosshairColor', {
-    Default = Color3.fromRGB(255, 255, 255),
-    Title = 'Crosshair Color',
-    Callback = function(value)
-        crosshairColor = value
-        for _, line in pairs(crosshairLines) do
-            line.Color = value
-        end
+ESPLeftBox:AddToggle('Team Check', {
+    Text = 'Team Check',
+    Tooltip = 'Toggle team check for visuals',
+    Callback = function(state)
+        teamCheck = state
     end
 })
 
--- ESP Tab
-local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Settings')
-
-ESPLeftBox:AddToggle('ESPEnabled', {
-    Text = 'Enable ESP',
-    Default = false,
-    Tooltip = 'Toggle all ESP features',
-    Callback = function(value) isESPEnabled = value end
-})
-
-ESPLeftBox:AddToggle('BoxESP', {
-    Text = 'Box ESP',
-    Default = false,
-    Callback = function(value) _G.BoxESP = value end
-})
-
-ESPLeftBox:AddToggle('TracerESP', {
-    Text = 'Tracers',
-    Default = false,
-    Callback = function(value) _G.Tracers = value end
-})
-
-ESPLeftBox:AddToggle('NameESP', {
-    Text = 'Names',
-    Default = false,
-    Callback = function(value) _G.PlayerNames = value end
-})
-
-ESPLeftBox:AddToggle('DistanceESP', {
-    Text = 'Distance',
-    Default = false,
-    Callback = function(value) _G.Distance = value end
-})
-
-ESPLeftBox:AddToggle('ChamsESP', {
+-- Add Chams toggle to Visuals tab
+ESPLeftBox:AddToggle('Chams', { 
     Text = 'Chams',
-    Default = false,
-    Callback = function(value) _G.Chams = value end
+    Tooltip = 'See players through walls',
+    Callback = function(state)
+        chamsEnabled = state
+        if not state then
+            for part, props in pairs(originalProperties) do
+                if part and part:IsA("BasePart") then
+                    part.Material = props.Material
+                    part.Color = props.Color
+                    part.Transparency = props.Transparency
+                end
+            end
+            table.clear(chamsParts)
+            table.clear(originalProperties)
+        end
+    end
 })
 
-ESPLeftBox:AddLabel('ESP Color'):AddColorPicker('ESPColor', {
-    Default = Color3.fromRGB(255, 255, 0),
-    Title = 'ESP Color',
-    Callback = function(value) _G.ESPColor = value end
-})
-
-ESPLeftBox:AddLabel('Chams Color'):AddColorPicker('ChamsColor', {
+ESPLeftBox:AddLabel('Chams Color'):AddColorPicker('Chams Color', {
+    Text = 'Chams Color',
+    Tooltip = 'Change chams color',
     Default = Color3.fromRGB(255, 0, 0),
-    Title = 'Chams Color',
-    Callback = function(value) _G.ChamsColor = value end
-})
-
-ESPLeftBox:AddToggle('HealthText', {
-    Text = 'Health Text',
-    Default = false,
-    Callback = function(value) _G.HealthText = value end
-})
-
-ESPLeftBox:AddToggle('HealthBar', {
-    Text = 'Health Bar',
-    Default = false,
-    Callback = function(value) _G.HealthBar = value end
-})
-
-ESPLeftBox:AddToggle('BackpackESP', {
-    Text = 'Backpack ESP',
-    Default = false,
-    Tooltip = 'Show locations of dropped backpacks',
-    Callback = function(value) 
-        _G.BackpackESP = value 
-        if value then
-            local droppedPacks = workspace:FindFirstChild("DroppedPacks")
-            if droppedPacks then
-                for _, backpack in ipairs(droppedPacks:GetChildren()) do
-                    if backpack.Name == "Backpack" then
-                        createBackpackESP(backpack)
-                    end
-                end
-            end
-        else
-            for backpack, esp in pairs(backpackCache) do
-                if esp.text then
-                    esp.text:Remove()
-                end
-                backpackCache[backpack] = nil
+    Callback = function(color)
+        for _, part in pairs(chamsParts) do
+            if part and part:IsA("BasePart") then
+                part.Color = color
             end
         end
     end
 })
 
-ESPLeftBox:AddLabel('Backpack Color'):AddColorPicker('BackpackColor', {
-    Default = Color3.fromRGB(255, 0, 0),
-    Title = 'Backpack ESP Color',
-    Callback = function(value) _G.BackpackColor = value end
-})
-
-ESPLeftBox:AddDivider()
-
-ESPLeftBox:AddToggle('OreESP', {
-    Text = 'Ore ESP',
-    Default = false,
-    Callback = function(value)
-        _G.OreESP = value
-        if value then
-            -- Initialize ESP for existing ores
-            local resources = workspace:FindFirstChild("Resources")
-            if resources then
-                for _, ore in ipairs(resources:GetChildren()) do
-                    if ore:FindFirstChildWhichIsA("MeshPart") then
-                        createResourceESP(ore)
-                    end
-                end
+-- Add workspace ESP toggle
+ESPLeftBox:AddToggle('Distance ESP', {
+    Text = 'Distance ESP',
+    Tooltip = 'Show distance to workspace players', 
+    Callback = function(state)
+        distanceEnabled = state
+        if not state then
+            for _, esp in pairs(workspaceESP) do
+                esp.text.Visible = false
+                esp.highlight.Enabled = false
             end
         end
     end
 })
 
-ESPLeftBox:AddSlider('OreDistance', {
-    Text = 'Ore ESP Distance',
-    Default = 1000,
-    Min = 100,
-    Max = 2000,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(value) _G.OreDistance = value end
-})
-
-ESPLeftBox:AddLabel('Ore ESP Color'):AddColorPicker('OreColor', {
-    Default = Color3.fromRGB(255, 170, 0),
-    Title = 'Ore ESP Color',
-    Callback = function(value) _G.OreColor = value end
-})
-
-ESPLeftBox:AddDivider()
-
-ESPLeftBox:AddToggle('ClothESP', {
-    Text = 'Cloth ESP',
-    Default = false,
-    Callback = function(value)
-        _G.ClothESP = value
-        if value then
-            -- Initialize ESP for existing cloth plants
-            local clothPlants = workspace:FindFirstChild("ClothPlants")
-            if clothPlants then
-                for _, plant in ipairs(clothPlants:GetChildren()) do
-                    if plant:FindFirstChildWhichIsA("MeshPart") then
-                        createClothESP(plant)
-                    end
-                end
-            end
-        end
-    end
-})
-
-ESPLeftBox:AddSlider('ClothDistance', {
-    Text = 'Cloth ESP Distance',
-    Default = 1000,
-    Min = 100,
-    Max = 2000,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(value) _G.ClothDistance = value end
-})
-
-ESPLeftBox:AddLabel('Cloth ESP Color'):AddColorPicker('ClothColor', {
-    Default = Color3.fromRGB(0, 255, 0),
-    Title = 'Cloth ESP Color',
-    Callback = function(value) _G.ClothColor = value end
-})
-
--- Weapons Tab (Add Fast Reload here)
-local WeaponsLeftBox = Tabs.WeaponsTab:AddLeftGroupbox("Fast Reload")
-
-WeaponsLeftBox:AddToggle("FastReloadToggle", {
-    Text = "FastReload",
-    Default = false,
-    Tooltip = "Toggle fast reload.",
-    Callback = function(value)
-        isRunning = value
-        
-        if isRunning then
-            -- Start the loop when toggle is enabled
-            if FastReload then
-                FastReload:Disconnect()
-            end
-            
-            FastReload = game:GetService("RunService").Heartbeat:Connect(function()
-                runAllScripts()
-                wait(0) -- Changed delay to 0.2 seconds between iterations
-            end)
-            
-            print("Fast Reload Started")
-        else
-            -- Stop the loop when toggle is disabled
-            if FastReload then
-                FastReload:Disconnect()
-                FastReload = nil
-            end
-            
-            print("Script loop stopped")
-        end
-    end
-})
-
--- World Tab
-local WorldLeftBox = Tabs.World:AddLeftGroupbox('World Settings')
-
--- Store original lighting settings
-local originalLightingSettings = {
-    Brightness = game.Lighting.Brightness,
-    OutdoorAmbient = game.Lighting.OutdoorAmbient,
-    Ambient = game.Lighting.Ambient,
-    GlobalShadows = game.Lighting.GlobalShadows,
-    FogEnd = game.Lighting.FogEnd,
-    FogStart = game.Lighting.FogStart
-}
-
-WorldLeftBox:AddToggle('Fullbright', {
-    Text = 'Fullbright',
-    Default = false,
-    Callback = function(value)
-        isFullbrightEnabled = value
-        
-        if isFullbrightEnabled then
-            game.Lighting.Brightness = 2
-            game.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-            game.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-            game.Lighting.GlobalShadows = false
-        else
-            game.Lighting.Brightness = originalLightingSettings.Brightness
-            game.Lighting.OutdoorAmbient = originalLightingSettings.OutdoorAmbient
-            game.Lighting.Ambient = originalLightingSettings.Ambient
-            game.Lighting.GlobalShadows = originalLightingSettings.GlobalShadows
-        end
-    end
-})
-
-WorldLeftBox:AddToggle('NoFog', {
-    Text = 'No Fog',
-    Default = false,
-    Callback = function(value)
-        isNoFogEnabled = value
-        
-        -- Clear any existing connection
-        if fogUpdateConnection then
-            fogUpdateConnection:Disconnect()
-            fogUpdateConnection = nil
-        end
-
-        if isNoFogEnabled then
-            -- Store original atmosphere properties if not already stored
-            if not originalLightingSettings.Atmosphere then
-                originalLightingSettings.Atmosphere = {
-                    Density = game.Lighting.Atmosphere.Density,
-                    Offset = game.Lighting.Atmosphere.Offset,
-                    Glare = game.Lighting.Atmosphere.Glare,
-                    Haze = game.Lighting.Atmosphere.Haze
-                }
-            end
-
-            -- Apply settings once
-            game.Lighting.FogEnd = 1000000
-            game.Lighting.FogStart = 1000000
-            game.Lighting.Atmosphere.Density = 0
-            game.Lighting.Atmosphere.Offset = 0
-            game.Lighting.Atmosphere.Glare = 0
-            game.Lighting.Atmosphere.Haze = 0
-            
-            -- Only watch for FogEnd changes using GetPropertyChangedSignal
-            fogUpdateConnection = game.Lighting:GetPropertyChangedSignal("FogEnd"):Connect(function()
-                if not isNoFogEnabled then return end
-                game.Lighting.FogEnd = 1000000
-                game.Lighting.FogStart = 1000000
-            end)
-        else
-            -- Restore original settings
-            game.Lighting.FogEnd = originalLightingSettings.FogEnd
-            game.Lighting.FogStart = originalLightingSettings.FogStart
-            
-            -- Restore atmosphere settings if they were stored
-            if originalLightingSettings.Atmosphere then
-                game.Lighting.Atmosphere.Density = originalLightingSettings.Atmosphere.Density
-                game.Lighting.Atmosphere.Offset = originalLightingSettings.Atmosphere.Offset
-                game.Lighting.Atmosphere.Glare = originalLightingSettings.Atmosphere.Glare
-                game.Lighting.Atmosphere.Haze = originalLightingSettings.Atmosphere.Haze
-            end
-        end
-    end
-})
-
--- Misc Tab
-local MiscLeftBox = Tabs.Misc:AddLeftGroupbox('Miscellaneous')
-
-MiscLeftBox:AddToggle('XRay', {
-    Text = 'XRay',
-    Default = false,
-    Callback = function(value)
-        xrayEnabled = value
-        updateXray()
-    end
-})
-
-MiscLeftBox:AddSlider('XRayTransparency', {
-    Text = 'XRay Transparency',
-    Default = 0.9,
-    Min = 0,
-    Max = 1,
-    Rounding = 2, -- Changed from 1 to 2 for better precision
-    Compact = false,
-    Callback = function(value)
-        transparencyValue = value
-        if xrayEnabled then 
-            updateXray() 
-        end
-    end
-})
-
-MiscLeftBox:AddInput('XRayBind', {
-    Default = 'X',
-    Numeric = false,
-    Text = 'XRay Keybind',
-    Tooltip = 'Press a key to bind',
-    Placeholder = 'Key',
-    Callback = function(value)
-        keybindKey = Enum.KeyCode[value:upper()]
-    end
-})
-
-MiscLeftBox:AddToggle('ZoomEnabled', {
-    Text = 'Enable Zoom',
-    Default = false,
-    Callback = function(value) 
-        zoomEnabled = value
-        if not zoomEnabled and isZooming then
-            handleZoom(false)
-        end
-    end
-})
-
-MiscLeftBox:AddSlider('ZoomFOV', {
-    Text = 'Zoom FOV',
-    Default = 15,
-    Min = 1,
-    Max = 120,
-    Rounding = 0,
-    Callback = function(value)
-        zoomFOV = value
-        if isZooming then
-            workspace.CurrentCamera.FieldOfView = value
-        end
-    end
-})
-
-MiscLeftBox:AddInput('ZoomBind', {
-    Default = 'C',
-    Numeric = false,
-    Text = 'Zoom Keybind',
-    Tooltip = 'Press a key to bind',
-    Placeholder = 'Key',
-    Callback = function(value)
-        zoomKey = Enum.KeyCode[value:upper()]
-    end
-})
-
-local MovementBox = Tabs.Misc:AddRightGroupbox('Another Miscellaneous')
-
--- Replace the TPWalk toggle and remove SpeedhackMode toggle
-MovementBox:AddToggle('TPWalk', {
-    Text = 'Speedhack',
-    Default = false,
-    Tooltip = 'Makes you run faster [BLATANT]',
-    Callback = function(value)
-        isTpWalking = value
-        tpwalking = value
-        if value then
-            local chr = LocalPlayer.Character
-            local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
-            
-            if hum then
-                local function tpwalk()
-                    if tpwalking and chr and hum and hum.Parent then
-                        if hum.MoveDirection.Magnitude > 0 then
-                            chr:TranslateBy(hum.MoveDirection * TPWalkSpeed/100)
-                        end
-                    end
-                end
-                
-                local tpwalking_connection = RunService.Heartbeat:Connect(function()
-                    pcall(function()
-                        if not isTpWalking then
-                            tpwalking_connection:Disconnect()
-                            return
-                        end
-                        tpwalk()
-                    end)
-                end)
-            end
-        end
-    end
-})
-
-MovementBox:AddSlider('TPWalkSpeed', {
-    Text = 'Speedhack Speed',
-    Default = 0,
-    Min = 0,
-    Max = 25,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(value)
-        TPWalkSpeed = value
-    end
-})
-
--- No Fall Damage Variables
-local noFallDamageEnabled = false
-local noFallDamageConnection = nil
-
-local function toggleNoFallDamage(state)
-    noFallDamageEnabled = state
-    
-    -- Disconnect existing connection if it exists
-    if noFallDamageConnection then
-        noFallDamageConnection:Disconnect()
-        noFallDamageConnection = nil
-    end
-    
-    if state then
-        -- Create new connection to prevent fall damage
-        noFallDamageConnection = RunService.RenderStepped:Connect(function()
-            pcall(function()
-                local player = Players.LocalPlayer
-                if not player then return end
-                
-                local character = player.Character
-                if not character then return end
-                
-                local hrp = character:FindFirstChild("HumanoidRootPart")
-                local humanoid = character:FindFirstChild("Humanoid")
-                if not hrp or not humanoid then return end
-                
-                -- Only act if player is falling at dangerous speeds
-                if hrp.Velocity.Y < -50 then
-                    -- Cast ray downward to detect ground from further away
-                    local rayOrigin = hrp.Position
-                    local rayDirection = Vector3.new(0, -15, 0)  -- Increased ray length
-                    local ray = Ray.new(rayOrigin, rayDirection)
-                    local hitPart, hitPos = workspace:FindPartOnRayWithIgnoreList(ray, {character})
-                    
-                    if hitPart then
-                        local distance = (rayOrigin - hitPos).Magnitude
-                        -- Start slowing down from further away
-                        if distance < 15 then
-                            -- Apply progressive slowdown for a more natural feel
-                            local slowFactor = distance / 15  -- 0 to 1 based on distance
-                            local newYVelocity = hrp.Velocity.Y * 0.7 * slowFactor
-                            
-                            -- Ensure it won't hurt the player
-                            if newYVelocity < -60 then
-                                newYVelocity = -60
-                            end
-                            
-                            hrp.Velocity = Vector3.new(hrp.Velocity.X, newYVelocity, hrp.Velocity.Z)
-                            
-                            -- When very close to ground, ensure safe landing
-                            if distance < 5 then
-                                hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(-40, hrp.Velocity.Y), hrp.Velocity.Z)
-                            end
-                        end
-                    end
-                end
-                
-                -- Additional safety: prevent death state if we're about to land
-                if humanoid.Health > 0 and humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-                    local rayOrigin = hrp.Position
-                    local rayDirection = Vector3.new(0, -8, 0)
-                    local ray = Ray.new(rayOrigin, rayDirection)
-                    local hitPart = workspace:FindPartOnRayWithIgnoreList(ray, {character})
-                    
-                    if hitPart and hrp.Velocity.Y < -70 then
-                        -- We're about to hit the ground at high speed - force safe landing
-                        hrp.Velocity = Vector3.new(hrp.Velocity.X, -40, hrp.Velocity.Z)
-                    end
-                end
-            end)
-        end)
-    end
-end
-
--- Add toggle for no fall damage
-MovementBox:AddToggle('NoFallDamage', {
-    Text = 'No Fall Damage',
-    Default = false,
-    Tooltip = 'Prevents fall damage by controlling descent velocity',
-})
-
--- Add keybind for no fall damage
-MovementBox:AddLabel('NoFallDamage Keybind: L')
-
--- Setup callback for the toggle
-Toggles.NoFallDamage:OnChanged(function()
-    toggleNoFallDamage(Toggles.NoFallDamage.Value)
-    local state = noFallDamageEnabled and "ON" or "OFF"
-    print("No Fall Damage: " .. state)
-end)
-
--- Keep the keybind functionality as well
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- Check if L key was pressed and not in a text box
-    if input.KeyCode == Enum.KeyCode.L and not gameProcessed then
-        -- Toggle the toggle in the UI
-        Toggles.NoFallDamage:SetValue(not Toggles.NoFallDamage.Value)
-    end
-end)
-
--- Wall Climb Variables
-local wallClimbEnabled = false
-local wallClimbConnection = nil
-local keybind = Enum.KeyCode.J
-local config = {
-    rayLength = 10,
-    distanceThreshold = 2,
-    angleThreshold = 0.15,
-    baseClimbBoost = 25,
-    highClimbBoost = 30,
-    ledgeClimbBoost = 35,
-    recoveryClimbBoost = 40,
-    lowVelocityBonus = 10,
-    forwardBoost = 3
-}
-
-MovementBox:AddToggle('WallClimbEnabled', {
-    Text = 'Enable Wall Climb',
-    Default = false,
-    Tooltip = 'Enables wall climbing functionality',
-    Callback = function(Value)
-        toggleWallClimb(Value)
-    end
-})
-
--- Keybind setting
-MovementBox:AddLabel('Keybind'):AddKeyPicker('WallClimbKeybind', {
-    Default = 'J',
-    Mode = 'Toggle',
-    Text = 'Wall Climb',
-    NoUI = false,
-    Callback = function(Value)
-        toggleWallClimb(not wallClimbEnabled)
-    end
-})
-
-local function toggleWallClimb(state)
-    wallClimbEnabled = state
-    
-    -- Disconnect existing connection if any
-    if wallClimbConnection then
-        wallClimbConnection:Disconnect()
-        wallClimbConnection = nil
-    end
-    
-    if state then
-        -- Connect to RenderStepped for smooth performance
-        wallClimbConnection = RunService.RenderStepped:Connect(function()
-            pcall(function()
-                local player = Players.LocalPlayer
-                if not player then return end
-                
-                local character = player.Character
-                if not character then return end
-                
-                local hrp = character:FindFirstChild("HumanoidRootPart")
-                local humanoid = character:FindFirstChild("Humanoid")
-                if not hrp or not humanoid then return end
-                
-                local moveDirection = humanoid.MoveDirection
-                if moveDirection.Magnitude > 0 then
-                    -- Configuration values
-                    local rayLength = config.rayLength
-                    local distanceThreshold = config.distanceThreshold
-                    local angleThreshold = config.angleThreshold
-                    
-                    -- Main forward raycasts at different heights
-                    local rayDirection = moveDirection.Unit * rayLength
-                    local rayOrigin1 = hrp.Position + Vector3.new(0, 1, 0)
-                    local rayOrigin2 = hrp.Position + Vector3.new(0, 2, 0)
-                    local rayOrigin3 = hrp.Position + Vector3.new(0, 3, 0)
-                    
-                    local ray1 = Ray.new(rayOrigin1, rayDirection)
-                    local ray2 = Ray.new(rayOrigin2, rayDirection)
-                    local ray3 = Ray.new(rayOrigin3, rayDirection)
-                    
-                    local hitPart1, hitPos1, hitNormal1 = workspace:FindPartOnRayWithIgnoreList(ray1, {character})
-                    local hitPart2, hitPos2, hitNormal2 = workspace:FindPartOnRayWithIgnoreList(ray2, {character})
-                    local hitPart3, hitPos3, hitNormal3 = workspace:FindPartOnRayWithIgnoreList(ray3, {character})
-                    
-                    local wallDetected = false
-                    local climbBoost = config.baseClimbBoost
-                    
-                    -- Check forward ray hits for walls
-                    if hitPart1 and (hitPos1 - rayOrigin1).Magnitude <= distanceThreshold and math.abs(hitNormal1.Y) < angleThreshold then
-                        wallDetected = true
-                    elseif hitPart2 and (hitPos2 - rayOrigin2).Magnitude <= distanceThreshold and math.abs(hitNormal2.Y) < angleThreshold then
-                        wallDetected = true
-                    elseif hitPart3 and (hitPos3 - rayOrigin3).Magnitude <= distanceThreshold and math.abs(hitNormal3.Y) < angleThreshold then
-                        wallDetected = true
-                        climbBoost = config.highClimbBoost -- Higher boost for higher wall detection
-                    end
-                    
-                    -- If no wall detected in front, check sides
-                    if not wallDetected then
-                        local rightDir = hrp.CFrame.RightVector
-                        local leftDir = -rightDir
-                        local sideRayLength = 0.6
-                        
-                        local rightRay1 = Ray.new(rayOrigin1, rightDir * sideRayLength)
-                        local rightRay2 = Ray.new(rayOrigin2, rightDir * sideRayLength)
-                        local leftRay1 = Ray.new(rayOrigin1, leftDir * sideRayLength)
-                        local leftRay2 = Ray.new(rayOrigin2, leftDir * sideRayLength)
-                        
-                        local rightHit1 = workspace:FindPartOnRayWithIgnoreList(rightRay1, {character})
-                        local rightHit2 = workspace:FindPartOnRayWithIgnoreList(rightRay2, {character})
-                        local leftHit1 = workspace:FindPartOnRayWithIgnoreList(leftRay1, {character})
-                        local leftHit2 = workspace:FindPartOnRayWithIgnoreList(leftRay2, {character})
-                        
-                        if rightHit1 or rightHit2 or leftHit1 or leftHit2 then
-                            wallDetected = true
-                        end
-                    end
-                    
-                    -- Check for ledges
-                    if not wallDetected then
-                        local frontRay = Ray.new(hrp.Position, moveDirection.Unit * 0.7)
-                        local frontHitPart = workspace:FindPartOnRayWithIgnoreList(frontRay, {character})
-                        
-                        if frontHitPart then
-                            local ledgeOrigin = hrp.Position + (moveDirection.Unit * 0.7) + Vector3.new(0, 3, 0)
-                            local ledgeRay = Ray.new(ledgeOrigin, Vector3.new(0, -5, 0))
-                            local ledgePart, ledgePos, ledgeNormal = workspace:FindPartOnRayWithIgnoreList(ledgeRay, {character})
-                            
-                            if ledgePart then
-                                local ledgeDelta = ledgeOrigin.Y - ledgePos.Y
-                                if ledgeDelta < 3 and ledgeNormal.Y > 0.7 then
-                                    wallDetected = true
-                                    climbBoost = config.ledgeClimbBoost -- Extra boost for ledges
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Check if player is in air with a wall below
-                    if not wallDetected then
-                        local downRayOrigin = hrp.Position
-                        local downRayDirection = Vector3.new(0, -3, 0)
-                        local downRay = Ray.new(downRayOrigin, downRayDirection)
-                        local downHitPart = workspace:FindPartOnRayWithIgnoreList(downRay, {character})
-                        
-                        if not downHitPart and hrp.Velocity.Y < 5 then
-                            local frontLowRayOrigin = hrp.Position - Vector3.new(0, 2, 0)
-                            local frontLowRay = Ray.new(frontLowRayOrigin, moveDirection.Unit * 0.7)
-                            local frontLowHitPart = workspace:FindPartOnRayWithIgnoreList(frontLowRay, {character})
-                            
-                            if frontLowHitPart then
-                                wallDetected = true
-                                climbBoost = config.recoveryClimbBoost -- Highest boost for recovery climb
-                            end
-                        end
-                    end
-                    
-                    -- Apply climbing velocity if wall detected
-                    if wallDetected then
-                        local currentVelocity = hrp.Velocity
-                        local forwardBoost = moveDirection.Unit * config.forwardBoost
-                        
-                        if currentVelocity.Y < 5 then
-                            climbBoost = climbBoost + config.lowVelocityBonus -- Additional boost when not already climbing fast
-                        end
-                        
-                        -- Set new velocity with upward and forward components
-                        hrp.Velocity = Vector3.new(
-                            currentVelocity.X + forwardBoost.X, 
-                            climbBoost, 
-                            currentVelocity.Z + forwardBoost.Z
-                        )
-                        
-                        -- Change humanoid state to climbing
-                        humanoid:ChangeState(Enum.HumanoidStateType.Climbing)
-                    end
-                end
-            end)
-        end)
-    end
-end
-
--- Add key press detection for the keybind
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- Check if the key pressed is the keybind and not in a text box
-    if input.KeyCode == keybind and not gameProcessed then
-        -- Toggle the wall climb state and update UI
-        local newState = not wallClimbEnabled
-        toggleWallClimb(newState)
-        Library.Unloaded:Connect(function()
-            toggleWallClimb(false)
-        end)
-        Options.WallClimbEnabled:SetValue(newState)
-    end
-end)
-
--- Update keybind variable when the UI keybind changes
-Options.WallClimbKeybind:OnClick(function()
-    keybind = Options.WallClimbKeybind.Value
-end)
-
--- Add ThemeManager and SaveManager to Settings tab
-local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-
-MenuGroup:AddButton('Unload', function()
-    -- Clean up crosshair
-    for _, line in pairs(crosshairLines) do
-        line:Remove()
-    end
-    for backpack, esp in pairs(backpackCache) do
-        if esp.text then
-            esp.text:Remove()
-        end
-    end
-    backpackCache = {}
-    if workspace:FindFirstChild("ThirdPerson") then
-        workspace.ThirdPerson:Destroy()
-    end
-    for _, esp in pairs(resourceCache) do
-        if esp.text then
-            esp.text:Remove()
-        end
-    end
-    resourceCache = {}
-    for _, esp in pairs(clothCache) do
-        if esp.text then
-            esp.text:Remove()
-        end
-    end
-    clothCache = {}
-    
-    -- Clear update manager
-    for key, _ in pairs(UpdateManager.lastUpdate) do
-        UpdateManager.lastUpdate[key] = nil
-    end
-    for key, _ in pairs(UpdateManager.intervals) do
-        UpdateManager.intervals[key] = nil
-    end
-    
-    Library:Unload()
-end)
-
-Library:OnUnload(function()
-    -- Clean up when UI is closed
-    if FastReload then
-        FastReload:Disconnect()
-        FastReload = nil
-    end
-    print("UI closed, scripts stopped")
-end)
-
-MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightShift', NoUI = true, Text = 'Menu keybind' }) 
-
-Library.ToggleKeybind = Options.MenuKeybind
-
--- Initialize Theme Manager
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-
-SaveManager:IgnoreThemeSettings() 
-
-SaveManager:SetIgnoreIndexes({ 'MenuKeybind' }) 
-
-ThemeManager:SetFolder('Auralis')
-SaveManager:SetFolder('Auralis/specific-game')
-
-SaveManager:BuildConfigSection(Tabs['UI Settings']) 
-
-ThemeManager:ApplyToTab(Tabs['UI Settings'])
-
--- Configuration
-local folder = workspace:FindFirstChild("BuiltObjects") -- Replace with your folder's name
-local excludedModels = {"Large Storage Box", "Furnace","Campfire", "Repair Bench", "Small Storage Box"} -- Add models to exclude
-local transparencyValue = 0.9  -- Change this to be adjustable
-local xrayEnabled = false -- Initial state of Xray
-local keybindKey = Enum.KeyCode.X -- Default keybind for Xray toggle
-
--- Function to check if a model is excluded
-local function isExcluded(modelName)
-    for _, excludedName in ipairs(excludedModels) do
-        if modelName == excludedName then
-            return true
-        end
-    end
-    return false
-end
-
--- Function to set MeshPart transparency
-local function setTransparency(model, transparency)
-    if typeof(transparency) ~= "number" then return end
-    
-    for _, descendant in ipairs(model:GetDescendants()) do
-        if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
-            descendant.Transparency = transparency
-        end
-    end
-end
-
--- Function to apply Xray effect
-local function updateXray()
-    if folder then
-        for _, model in ipairs(folder:GetChildren()) do
-            if model:IsA("Model") and not isExcluded(model.Name) then
-                setTransparency(model, xrayEnabled and transparencyValue or 0) -- Reset to 0 if disabled
-            end
-        end
-    else
-        warn("Folder not found in workspace.")
-    end
-end
-
--- Function to toggle Xray using keybind
-local function onKeyPress(input)
-    if input.KeyCode == keybindKey then
-        xrayEnabled = not xrayEnabled
-        updateXray()
-        Library:Notify('Xray ' .. (xrayEnabled and "Enabled" or "Disabled"), 2)
-    end
-end
-
--- Connect the key press function
-game:GetService("UserInputService").InputBegan:Connect(onKeyPress)
-
--- Update the FOV circle position
-local function UpdateFovCircle()
-    local currentTime = tick()
-    if currentTime - lastFOVUpdate < FOV_UPDATE_INTERVAL then return end
-    lastFOVUpdate = currentTime
-    
-    local mousePos = UserInputService:GetMouseLocation()
-    fovCircle.Position = mousePos
-end
-
--- Check if a position is within the FOV circle
-local function IsInFov(position)
-    local mouse = UserInputService:GetMouseLocation()  -- Get exact mouse position
-    local screenPosition, isVisible = Camera:WorldToViewportPoint(position)
-    local distanceToMouse = (Vector2.new(screenPosition.X, screenPosition.Y) - mouse).Magnitude
-    return isVisible and distanceToMouse <= fovAmount
-end
-
--- Replace the IsVisible function with this improved version
-local function IsVisible(targetPart)
-    -- Validate inputs
-    if not targetPart or not targetPart.Position then return false end
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Head") then return false end
-
-    -- Get camera and target positions
-    local origin = Camera.CFrame.Position
-    local targetPos = targetPart.Position
-    local direction = (targetPos - origin).Unit
-    local distance = (targetPos - origin).Magnitude
-
-    -- Setup raycast
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {
-        LocalPlayer.Character,
-        targetPart.Parent,
-        Camera
-    }
-    raycastParams.IgnoreWater = true
-
-    -- Cast ray from camera to target
-    local result = workspace:Raycast(origin, direction * distance, raycastParams)
-    
-    -- Target is visible if ray didn't hit anything
-    if not result then
-        return true
-    end
-
-    -- If ray hit something, check if it's close to target
-    local hitPoint = result.Position
-    local hitDist = (hitPoint - targetPos).Magnitude
-
-    -- Consider target visible if hit point is very close (accounting for edge cases)
-    return hitDist < 3
-end
-
--- Get the closest player based on the selected target part
-local function GetClosestPlayer()
-    local ClosestDistance, ClosestPlayer = math.huge, nil
-
-    for _, model in ipairs(workspace.Players:GetChildren()) do
-        if model ~= LocalPlayer.Character and (not teamCheck or model:FindFirstChild("Team") ~= LocalPlayer.Team) then
-            local TargetPart = model:FindFirstChild(targetPart, true)
-            local Humanoid = model:FindFirstChild("Humanoid")
-
-            if TargetPart and Humanoid and Humanoid.Health > 0 then
-                if IsInFov(TargetPart.Position) then
-                    local screenPosition, isVisible = Camera:WorldToViewportPoint(TargetPart.Position)
-                    if isVisible then
-                        local distanceToMouse = (LocalPlayer:GetMouse().X - screenPosition.X) ^ 2 
-                            + (LocalPlayer:GetMouse().Y - screenPosition.Y) ^ 2
-                        if distanceToMouse < ClosestDistance then
-                            ClosestPlayer = model
-                            ClosestDistance = distanceToMouse
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return ClosestPlayer
-end
-
--- Lock camera onto the selected part of the closest player
-local function LockCameraOnClosestPlayer()
-    local target = GetClosestPlayer()
-    if not target then return end
-
-    local targetPart = target:FindFirstChild(targetPart, true)
-    if not targetPart then return end
-
-    -- Only check visibility if enabled and target is in range
-    if isVisibilityCheckEnabled then
-        local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
-        if distance > 1000 then return end -- Don't aim at too far targets
-        
-        if not IsVisible(targetPart) then return end
-    end
-
-    -- Smooth aim with adjustable smoothness
-    local targetPos = targetPart.Position
-    local currentPos = Camera.CFrame.Position
-    local newCFrame = CFrame.new(currentPos, targetPos)
-    Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
-end
-
--- ESP Functions
-local function applyChams(player)
-    if not player or not player:IsA("Model") then return end
-    
-    -- Get or create highlight
-    local highlight = chamCache[player]
-    if not highlight then
-        highlight = Instance.new("Highlight")
-        highlight.Name = "ESPHighlight"
-        highlight.Parent = player
-        chamCache[player] = highlight
-    end
-    
-    -- Update visibility and colors based on conditions
-    if _G.Chams and isESPEnabled then
-        -- Check distance
-        local root = player:FindFirstChild("HumanoidRootPart")
-        local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        
-        if root and localRoot then
-            local distance = (localRoot.Position - root.Position).Magnitude
-            if distance > 1000 then
-                highlight.Enabled = false
-                return
-            end
-        end
-        
-        highlight.Enabled = true
-        highlight.FillColor = _G.ChamsColor
-        highlight.OutlineColor = _G.ChamsColor
-        highlight.FillTransparency = 0.5
-        highlight.OutlineTransparency = 0
-    else
-        highlight.Enabled = false
-    end
-end
-
--- Replace the createESP function with this optimized version
-local function createESP(player)
-    local espData = {
-        box = Drawing.new("Square"),
-        name = Drawing.new("Text"),
-        distance = Drawing.new("Text"),
-        health = Drawing.new("Text"),
-        healthBg = Drawing.new("Square"),
-        healthBar = Drawing.new("Square"),
-        tracer = Drawing.new("Line")
-    }
-    
-    -- Pre-configure shared properties
-    for _, obj in pairs(espData) do
-        obj.Visible = false
-        if obj.Thickness then obj.Thickness = 1.5 end
-        if obj.Transparency then obj.Transparency = 1 end
-    end
-    
-    -- Specific configurations
-    espData.name.Center = true
-    espData.name.Size = _G.TextSize
-    espData.distance.Center = true
-    espData.distance.Size = _G.TextSize
-    espData.health.Center = true
-    espData.health.Size = _G.TextSize
-    espData.tracer.Thickness = 1.5
-    
-    local cachedRoot
-    local cachedHumanoid
-    
-    local function cleanup()
-        for _, obj in pairs(espData) do
-            obj.Visible = false
-            obj:Remove()
-        end
-    end
-    
-    local function updateESP()
-        -- Check if player still exists
-        if not player or not player.Parent then
-            cleanup()
-            return false
-        end
-
-        -- Cache character parts if not cached
-        cachedRoot = cachedRoot and cachedRoot.Parent and cachedRoot or player:FindFirstChild("HumanoidRootPart")
-        if not cachedRoot then 
-            cleanup()
-            return false 
-        end
-
-        cachedHumanoid = cachedHumanoid and cachedHumanoid.Parent and cachedHumanoid or player:FindFirstChild("Humanoid")
-        if not cachedHumanoid then 
-            cleanup()
-            return false 
-        end
-
-        -- Quick health check
-        if cachedHumanoid.Health <= 0 then
-            cleanup()
-            return false
-        end
-
-        -- Efficient position check
-        local pos, onScreen = Camera:WorldToViewportPoint(cachedRoot.Position)
-        local distance = (Camera.CFrame.Position - cachedRoot.Position).Magnitude
-
-        if not onScreen or distance > 1000 or not isESPEnabled then
-            for _, obj in pairs(espData) do
-                obj.Visible = false
-            end
-            return true
-        end
-
-        -- Improved size calculation
-        local scale = 1 / (distance * 0.03)
-        local boxSize = Vector2.new(
-            math.clamp(60 * scale, 6, 60),
-            math.clamp(80 * scale, 8, 80)
-        )
-
-        local screenPosition = Vector2.new(pos.X, pos.Y)
-
-        -- Update box
-        espData.box.Size = boxSize
-        espData.box.Position = screenPosition - boxSize / 2
-        espData.box.Color = _G.ESPColor
-        espData.box.Visible = _G.BoxESP
-
-        -- Update tracer
-        espData.tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-        espData.tracer.To = screenPosition
-        espData.tracer.Color = _G.ESPColor
-        espData.tracer.Visible = _G.Tracers
-
-        -- Update health display
-        if _G.HealthText or _G.HealthBar then
-            local healthPercent = cachedHumanoid.Health / cachedHumanoid.MaxHealth
-            local healthColor = Color3.fromRGB(255 * (1 - healthPercent), 255 * healthPercent, 0)
-
-            if _G.HealthText then
-                espData.health.Text = math.floor(cachedHumanoid.Health) .. "/" .. math.floor(cachedHumanoid.MaxHealth)
-                espData.health.Position = screenPosition + Vector2.new(0, boxSize.Y / 2 + 2)
-                espData.health.Color = healthColor
-                espData.health.Visible = true
-            else
-                espData.health.Visible = false
-            end
-
-            if _G.HealthBar then
-                local barWidth = 2
-                local barPos = screenPosition - Vector2.new(boxSize.X / 2 + barWidth * 2, 0)
-
-                espData.healthBg.Size = Vector2.new(barWidth, boxSize.Y)
-                espData.healthBg.Position = barPos
-                espData.healthBg.Color = Color3.new(0, 0, 0)
-                espData.healthBg.Visible = true
-
-                espData.healthBar.Size = Vector2.new(barWidth, boxSize.Y * healthPercent)
-                espData.healthBar.Position = barPos + Vector2.new(0, boxSize.Y * (1 - healthPercent))
-                espData.healthBar.Color = healthColor
-                espData.healthBar.Visible = true
-            else
-                espData.healthBg.Visible = false
-                espData.healthBar.Visible = false
-            end
-        end
-
-        -- Update name and distance
-        espData.name.Text = player.Name
-        espData.name.Position = screenPosition - Vector2.new(0, boxSize.Y / 2 + 16)
-        espData.name.Color = _G.ESPColor
-        espData.name.Visible = _G.PlayerNames
-
-        espData.distance.Text = math.floor(distance) .. "m"
-        espData.distance.Position = screenPosition + Vector2.new(0, boxSize.Y / 2 + 16)
-        espData.distance.Color = _G.ESPColor
-        espData.distance.Visible = _G.Distance
-
-        return true
-    end
-    
-    -- Clean up connection with improved error handling
-    local connection
-    connection = RunService.RenderStepped:Connect(function()
-        local success, shouldContinue = pcall(updateESP)
-        if not success or shouldContinue == false then
-            if connection then
-                connection:Disconnect()
-            end
-            cleanup()
-        end
-    end)
-
-    -- Add cleanup when player is removed
-    player.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            if connection then
-                connection:Disconnect()
-            end
-            cleanup()
-        end
-    end)
-end
--- Replace the initializeESPForPlayers function
-local function initializeESPForPlayers()
-    -- Clean up existing ESP
-    for _, espData in pairs(cachedParts) do
-        if espData then
-            for _, obj in pairs(espData) do
-                if obj.Remove then obj:Remove() end
-            end
-        end
-    end
-    cachedParts = {}
-
-    -- Initialize ESP for all players in workspace.Players
-    for _, player in ipairs(workspace.Players:GetChildren()) do
-        if player ~= LocalPlayer.Character and player:IsA("Model") then
-            createESP(player)
-        end
-    end
-
-    -- Monitor workspace.Players for new players
-    if not workspace.Players:FindFirstChild("_ESPConnection") then
-        local connection = workspace.Players.ChildAdded:Connect(function(player)
-            if player ~= LocalPlayer.Character and player:IsA("Model") then
-                task.wait(0.1) -- Wait for character to load
-                createESP(player)
-            end
-        end)
-        
-        -- Store connection in a dummy instance to prevent duplicates
-        local holder = Instance.new("ObjectValue")
-        holder.Name = "_ESPConnection"
-        holder:SetAttribute("Connection", connection)
-        holder.Parent = workspace.Players
-    end
-end
-
--- Add player monitoring after LocalPlayer.CharacterAdded connection
-workspace.Players.DescendantRemoving:Connect(function(descendant)
-    if cachedParts[descendant] then
-        for _, obj in pairs(cachedParts[descendant]) do
-            if obj.Remove then obj:Remove() end
-        end
-        cachedParts[descendant] = nil
-    end
-end)
-
--- Periodically check for new players that might have been missed
-local function periodicESPCheck()
-    while task.wait(1) do
-        for _, player in ipairs(workspace.Players:GetChildren()) do
-            if player ~= LocalPlayer.Character and player:IsA("Model") and not cachedParts[player] then
-                createESP(player)
-            end
-        end
-    end
-end
-
-coroutine.wrap(periodicESPCheck)()
-
--- Add this connection to create ESP for new players
-workspace.Players.ChildAdded:Connect(function(player)
-    if player ~= LocalPlayer.Character then
-        task.wait(0.5) -- Wait for character to load
-        createESP(player)
-    end
-end)
-
--- Initialize ESP for existing players
-for _, player in ipairs(workspace.Players:GetChildren()) do
-    if player ~= LocalPlayer.Character then
-        createESP(player)
-    end
-end
-
--- Keybind handler for toggling Aimbot
 UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == aimbotKey then
-        isAimbotEnabled = not isAimbotEnabled
-        Library:Notify('Aimbot ' .. (isAimbotEnabled and "Enabled" or "Disabled"), 2)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        rightMouseHeld = true
     end
 end)
 
--- Add this new zoom function
-local function handleZoom(isKeyDown)
-    if not zoomEnabled then return end
-    
-    if isKeyDown and not isZooming then
-        isZooming = true
-        lastZoomState = true
-        workspace.CurrentCamera.FieldOfView = zoomFOV
-    elseif not isKeyDown and isZooming then
-        isZooming = false
-        lastZoomState = false
-        workspace.CurrentCamera.FieldOfView = defaultFOV
-    end
-end
-
--- Replace the zoom keybind handlers
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == zoomKey then
-        handleZoom(true)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        rightMouseHeld = false
     end
 end)
-
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == zoomKey then
-        handleZoom(false)
-    end
-end)
-
--- Add this character tracking connection before Library:Init()
-LocalPlayer.CharacterAdded:Connect(function(char)
-    currentCharacter = char
-    resetMovementState()
-    
-    char:WaitForChild("Humanoid").Died:Connect(function()
-        resetMovementState()
-    end)
-end)
-
-if LocalPlayer.Character then
-    setupCharacter(LocalPlayer.Character)
-end
-
-LocalPlayer.CharacterAdded:Connect(setupCharacter)
-
-LocalPlayer.CharacterAdded:Connect(function()
-    tpwalking = false
-    jumping = false
-end)
-
-local function UpdateCrosshair()
-    if not isCrosshairEnabled then return end
-    
-    local center = UserInputService:GetMouseLocation()
-    
-    crosshairLines.left.From = Vector2.new(center.X - crosshairSize, center.Y)
-    crosshairLines.left.To = Vector2.new(center.X - 2, center.Y)
-    
-    crosshairLines.right.From = Vector2.new(center.X + 2, center.Y)
-    crosshairLines.right.To = Vector2.new(center.X + crosshairSize, center.Y)
-    
-    crosshairLines.top.From = Vector2.new(center.X, center.Y - crosshairSize)
-    crosshairLines.top.To = Vector2.new(center.X, center.Y - 2)
-    
-    crosshairLines.bottom.From = Vector2.new(center.X, center.Y + 2)
-    crosshairLines.bottom.To = Vector2.new(center.X, center.Y + crosshairSize)
-end
-
--- Add these optimizations near the RunService connection
-local lastMainUpdate = 0
-local MAIN_UPDATE_INTERVAL = 1/60  -- Cap at 60 FPS
 
 RunService.RenderStepped:Connect(function()
-    local currentTime = tick()
-    if currentTime - lastMainUpdate < MAIN_UPDATE_INTERVAL then return end
-    lastMainUpdate = currentTime
-
-    if isAimbotEnabled then
-        LockCameraOnClosestPlayer()
-    end
-    
-    UpdateFovCircle()
-    UpdateCrosshair()
-end)
-
--- Clean up cached parts when a player leaves
-game.Players.PlayerRemoving:Connect(function(player)
-    if cachedParts[player] then
-        cachedParts[player] = nil
-    end
-    
-    if chamCache[player] then
-        chamCache[player]:Destroy()
-        chamCache[player] = nil
+    if isFOVVisible then
+        local mouseLocation = UserInputService:GetMouseLocation()
+        fovCircle.Position = Vector2.new(mouseLocation.X, mouseLocation.Y)
     end
 end)
 
-local backpackCache = {}
-local BACKPACK_UPDATE_INTERVAL = 0.016  -- Match frame rate for smoother updates
+local function IsInFov(position)
+    local mouse = UserInputService:GetMouseLocation()
+    local screenPosition, onScreen = Camera:WorldToViewportPoint(position)
+    local distance = (Vector2.new(screenPosition.X, screenPosition.Y) - mouse).Magnitude
+    return onScreen and distance <= fovAmount
+end
 
-local function createBackpackESP(backpack)
-    if not backpack then return end
-    -- Remove duplicate backpack check to allow recreating ESP if needed
-    backpackCache[backpack] = {
-        text = Drawing.new("Text"),
-        lastUpdate = 0
+local function IsVisible(targetPart)
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin).Unit
+    local distance = (targetPart.Position - origin).Magnitude
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    rayParams.FilterDescendantsInstances = {
+        game.Players.LocalPlayer.Character,
+        targetPart.Parent
     }
-    
-    local function initESP()
-        local bagPart = backpack:WaitForChild("bag", 2)  -- Wait up to 2 seconds for bag part to load
-        if not bagPart then 
-            -- If bag part didn't load, retry once after a delay
-            task.wait(0.5)
-            bagPart = backpack:FindFirstChild("bag")
-            if not bagPart then return end
-        end
-        
-        local Text = Drawing.new("Text")
-        Text.Visible = false
-        Text.Color = _G.BackpackColor
-        Text.Size = _G.TextSize
-        Text.Center = true
-        Text.Outline = true
-        
-        backpackCache[backpack] = {
-            text = Text,
-            lastUpdate = 0
-        }
-        
-        local function Update()
-            local connection
-            connection = RunService.RenderStepped:Connect(function()
-                if not backpack or not backpack.Parent or not bagPart.Parent then
-                    Text.Visible = false
-                    Text:Remove()
-                    backpackCache[backpack] = nil
-                    if connection then connection:Disconnect() end
-                    return
-                end
-                
-                local currentTime = tick()
-                if currentTime - backpackCache[backpack].lastUpdate < BACKPACK_UPDATE_INTERVAL then return end
-                backpackCache[backpack].lastUpdate = currentTime
-                
-                local vector, onScreen = Camera:WorldToViewportPoint(bagPart.Position)
-                local distance = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
-                    (LocalPlayer.Character.HumanoidRootPart.Position - bagPart.Position).Magnitude or 0
-                
-                if onScreen and distance <= 1000 then
-                    Text.Position = Vector2.new(vector.X, vector.Y)
-                    Text.Text = "Backpack [" .. math.floor(distance) .. "m]"
-                    Text.Color = _G.BackpackColor
-                    Text.Visible = _G.BackpackESP
-                else
-                    Text.Visible = false
-                end
-            end)
-        end
-        
-        -- Add error handling and reconnection
-        backpack.AncestryChanged:Connect(function(_, parent)
-            if not parent then
-                if connection then connection:Disconnect() end
-                Text:Remove()
-                backpackCache[backpack] = nil
-            end
-        end)
-        
-        coroutine.wrap(Update)()
-    end
-    
-    -- Wrap initialization in pcall for error handling
-    pcall(initESP)
+    rayParams.IgnoreWater = true
+
+    local result = workspace:Raycast(origin, direction * distance, rayParams)
+    return not result or (result.Position - targetPart.Position).Magnitude < 3
 end
 
-if workspace:FindFirstChild("DroppedPacks") then
-    workspace.DroppedPacks.ChildAdded:Connect(function(child)
-        if child.Name == "Backpack" then
-            task.wait(0.1)  -- Short delay to ensure model is loaded
-            createBackpackESP(child)
-        end
-    end)
-    
-    -- Initialize ESP for existing backpacks with retry
-    for _, backpack in ipairs(workspace.DroppedPacks:GetChildren()) do
-        if backpack.Name == "Backpack" then
-            task.spawn(function()
-                createBackpackESP(backpack)
-            end)
-        end
-    end
-end
+local function GetClosestPlayer()
+    local closest, closestDistance = nil, math.huge
+    local mouse = UserInputService:GetMouseLocation()
 
--- Add cleanup for chams when player leaves
-Players.PlayerRemoving:Connect(function(player)
-    local highlight = chamCache[player]
-    if highlight then
-        highlight:Destroy()
-        chamCache[player] = nil
-    end
-end)
+    local playersFolder = workspace:FindFirstChild("Players")
+    if not playersFolder then return nil end
 
--- Update chams in the main render loop
-RunService.RenderStepped:Connect(function()
-    local currentTime = tick()
-    if currentTime - lastChamsUpdate < CHAMS_UPDATE_INTERVAL then return end
-    lastChamsUpdate = currentTime
-    
-    for _, player in ipairs(workspace.Players:GetChildren()) do
-        if player ~= LocalPlayer.Character then
-            applyChams(player)
-        end
-    end
-end)
+    for _, model in pairs(playersFolder:GetChildren()) do
+        if model.Name ~= Players.LocalPlayer.Name then
+            local target = model:FindFirstChild(targetPart, true)
+            local humanoid = model:FindFirstChild("Humanoid")
 
-local isThirdPerson = false
-local thirdPersonKey = Enum.KeyCode.LeftAlt  -- Default key
-local thirdPersonDistance = 5  -- Default distance
-local thirdPersonEnabled = false
-local oldCameraSubject = nil
-local lastCameraType = nil
-
-local function updateThirdPerson()
-    if not LocalPlayer.Character then return end
-    
-    if thirdPersonEnabled then
-        if lastCameraType == nil then
-            lastCameraType = Camera.CameraType
-            oldCameraSubject = Camera.CameraSubject
-        end
-        
-        Camera.CameraType = Enum.CameraType.Custom
-        Camera.CameraSubject = LocalPlayer.Character:FindFirstChild("Humanoid")
-        
-        local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if root then
-            Camera.CFrame = CFrame.new(root.Position - Camera.CFrame.LookVector * thirdPersonDistance, root.Position)
-        end
-    else
-        if lastCameraType then
-            Camera.CameraType = lastCameraType
-            Camera.CameraSubject = oldCameraSubject
-            lastCameraType = nil
-            oldCameraSubject = nil
-        end
-    end
-end
-
--- Add to Misc Tab after existing controls
-local ThirdPersonBox = Tabs.Misc:AddRightGroupbox('Third Person')
-
-ThirdPersonBox:AddToggle('ThirdPerson', {
-    Text = 'Third Person',
-    Default = false,
-    Tooltip = 'Toggle third person camera view',
-    Callback = function(value)
-        thirdPersonEnabled = value
-        if not value then
-            updateThirdPerson()
-        end
-    end
-})
-
-ThirdPersonBox:AddSlider('TPDistance', {
-    Text = 'Camera Distance',
-    Default = 5,
-    Min = 2,
-    Max = 20,
-    Rounding = 1,
-    Compact = false,
-    Callback = function(value)
-        thirdPersonDistance = value
-    end
-})
-
-ThirdPersonBox:AddInput('TPBind', {
-    Default = 'LeftAlt',
-    Numeric = false,
-    Text = 'Toggle Key',
-    Tooltip = 'Press a key to bind',
-    Placeholder = 'Key',
-    Callback = function(value)
-        thirdPersonKey = Enum.KeyCode[value:upper()]
-    end
-})
-
--- Add before Library:Init()
-RunService.RenderStepped:Connect(function()
-    if thirdPersonEnabled then
-        updateThirdPerson()
-    end
-end)
-
--- Handle keybind toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == thirdPersonKey then
-        thirdPersonEnabled = not thirdPersonEnabled
-        if not thirdPersonEnabled then
-            updateThirdPerson()
-        end
-        Library:Notify('Third Person ' .. (thirdPersonEnabled and "Enabled" or "Disabled"), 2)
-    end
-end)
-
--- Add near other variables at the top
-local isNoclipEnabled = false
-local noclipKey = Enum.KeyCode.V
-
--- Add before Library:Init()
-RunService.RenderStepped:Connect(function()
-    if isNoclipEnabled then
-        local camcf = workspace.CurrentCamera.CFrame
-        local vischeck_params = RaycastParams.new()
-        vischeck_params.FilterDescendantsInstances = { workspace.Ignored, Camera }
-        vischeck_params.FilterType = Enum.RaycastFilterType.Exclude
-        vischeck_params.IgnoreWater = true
-        local thing = workspace:Raycast(camcf.p, camcf.LookVector * 100000, vischeck_params)
-        if thing and thing.Instance then
-            thing.Instance.Material = Enum.Material.Glass
-            thing.Instance:SetAttribute("PreventBreak", false)
-        end
-    end
-end)
-
--- Add to Misc Tab after ThirdPersonBox
-local NoclipBox = Tabs.Misc:AddRightGroupbox('Noclip')
-
-NoclipBox:AddLabel('Hold V to use Noclip')
-
-NoclipBox:AddInput('NoclipBind', {
-    Default = 'V',
-    Numeric = false,
-    Text = 'Noclip Key',
-    Tooltip = 'Press a key to bind',
-    Placeholder = 'Key',
-    Callback = function(value)
-        noclipKey = Enum.KeyCode[value:upper()]
-    end
-})
-
--- Add this function before Library:Init()
-local function setupNoclip()
-    local vischeck_params = RaycastParams.new()
-    vischeck_params.FilterDescendantsInstances = { workspace.Ignored, Camera }
-    vischeck_params.FilterType = Enum.RaycastFilterType.Exclude
-    vischeck_params.IgnoreWater = true
-
-    -- Handle noclip input
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if input.KeyCode == noclipKey then
-            isNoclipEnabled = true
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input, gameProcessed)
-        if input.KeyCode == noclipKey then
-            isNoclipEnabled = false
-        end
-    end)
-end
-
-setupNoclip()
-
--- Add after other cache declarations
-local resourceCache = {}
-local clothCache = {}
-local backpackCache = {}
-local chamCache = {}
-
--- Add after other functions but before UI code
-local function createResourceESP(resource)
-    if not resource then return end
-    -- Check if the resource is in our allowed list
-    if not allowedOres[resource.Name] then return end
-    
-    local meshPart = resource:FindFirstChildWhichIsA("MeshPart")
-    if not meshPart then return end
-    
-    local Text = Drawing.new("Text")
-    Text.Visible = false
-    Text.Color = _G.OreColor
-    Text.Size = _G.TextSize
-    Text.Center = true
-    Text.Outline = true
-
-    resourceCache[resource] = {
-        text = Text,
-        lastUpdate = 0
-    }
-    
-    local function Update()
-        local connection
-        connection = RunService.RenderStepped:Connect(function()
-            if not resource or not resource.Parent then
-                Text.Visible = false
-                Text:Remove()
-                resourceCache[resource] = nil
-                if connection then connection:Disconnect() end
-                return
-            end
-            
-            local vector, onScreen = Camera:WorldToViewportPoint(meshPart.Position)
-            local distance = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
-                (LocalPlayer.Character.HumanoidRootPart.Position - meshPart.Position).Magnitude or 0
-            
-            if onScreen and distance <= _G.OreDistance and _G.OreESP then
-                Text.Position = Vector2.new(vector.X, vector.Y)
-                Text.Text = resource.Name .. " [" .. math.floor(distance) .. "m]"
-                Text.Color = _G.OreColor
-                Text.Visible = true
-            else
-                Text.Visible = false
-            end
-        end)
-    end
-    
-    coroutine.wrap(Update)()
-end
-
-local function createClothESP(cloth)
-    if not cloth then return end
-    
-    local meshPart = cloth:FindFirstChildWhichIsA("MeshPart")
-    if not meshPart then return end
-    
-    local Text = Drawing.new("Text")
-    Text.Visible = false
-    Text.Color = _G.ClothColor
-    Text.Size = _G.TextSize
-    Text.Center = true
-    Text.Outline = true
-
-    clothCache[cloth] = {
-        text = Text,
-        lastUpdate = 0
-    }
-    
-    local function Update()
-        local connection
-        connection = RunService.RenderStepped:Connect(function()
-            if not cloth or not cloth.Parent then
-                Text.Visible = false
-                Text:Remove()
-                clothCache[cloth] = nil
-                if connection then connection:Disconnect() end
-                return
-            end
-            
-            local vector, onScreen = Camera:WorldToViewportPoint(meshPart.Position)
-            local distance = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
-                (LocalPlayer.Character.HumanoidRootPart.Position - meshPart.Position).Magnitude or 0
-            
-            if onScreen and distance <= _G.ClothDistance and _G.ClothESP then
-                Text.Position = Vector2.new(vector.X, vector.Y)
-                Text.Text = "Cloth Plant [" .. math.floor(distance) .. "m]"
-                Text.Color = _G.ClothColor
-                Text.Visible = true
-            else
-                Text.Visible = false
-            end
-        end)
-    end
-    
-    coroutine.wrap(Update)()
-end
-
--- Add before Library:Init()
-if workspace:FindFirstChild("Resources") then
-    workspace.Resources.ChildAdded:Connect(function(ore)
-        if ore:IsA("Model") then
-            task.wait(0.1)  -- Wait for meshpart to load
-            createResourceESP(ore)
-        end
-    end)
-    
-    -- Initialize ESP for existing ores
-    for _, ore in ipairs(workspace.Resources:GetChildren()) do
-        if ore:IsA("Model") then
-            task.spawn(function()
-                createResourceESP(ore)
-            end)
-        end
-    end
-end
-
-if workspace:FindFirstChild("ClothPlants") then
-    workspace.ClothPlants.ChildAdded:Connect(function(plant)
-        if plant:IsA("Model") then
-            task.wait(0.1)  -- Wait for meshpart to load
-            createClothESP(plant)
-        end
-    end)
-    
-    -- Initialize ESP for existing cloth plants
-    for _, plant in ipairs(workspace.ClothPlants:GetChildren()) do
-        if plant:IsA("Model") then
-            task.spawn(function()
-                createClothESP(plant)
-            end)
-        end
-    end
-end
-
--- Add these performance settings near the top after other settings
-local PERFORMANCE = {
-    ESP_UPDATE_INTERVAL = 0.1,    -- ESP update interval (10 times per second)
-    RESOURCE_UPDATE_INTERVAL = 0.2, -- Resource ESP update interval (5 times per second)
-    MAX_DISTANCE = 1000,          -- Max distance for all ESP features
-    CLEANUP_INTERVAL = 5,         -- Clean invalid cache entries every 5 seconds
-    MAX_CACHED_ENTRIES = 100      -- Maximum number of cached entries
-}
-
--- Replace existing cache declarations with optimized versions
-local resourceCache = setmetatable({}, { __mode = "k" })  -- Weak keys for auto cleanup
-local clothCache = setmetatable({}, { __mode = "k" })
-local backpackCache = setmetatable({}, { __mode = "k" })
-local chamCache = setmetatable({}, { __mode = "k" })
-
--- Replace createResourceESP function
-local function createResourceESP(resource)
-    if not resource or not allowedOres[resource.Name] then return end
-    
-    local meshPart = resource:FindFirstChildWhichIsA("MeshPart")
-    if not meshPart then return end
-    
-    -- Check cache size
-    local cacheSize = 0
-    for _ in pairs(resourceCache) do cacheSize = cacheSize + 1 end
-    if cacheSize >= PERFORMANCE.MAX_CACHED_ENTRIES then return end
-    
-    local Text = Drawing.new("Text")
-    Text.Visible = false
-    Text.Color = _G.OreColor
-    Text.Size = _G.TextSize
-    Text.Center = true
-    Text.Outline = true
-
-    resourceCache[resource] = {
-        text = Text,
-        lastUpdate = 0,
-        position = meshPart.Position -- Cache position
-    }
-    
-    local lastUpdateTime = 0
-    
-    local function Update()
-        local connection
-        connection = RunService.Heartbeat:Connect(function() -- Use Heartbeat instead of RenderStepped
-            local currentTime = tick()
-            if currentTime - lastUpdateTime < PERFORMANCE.RESOURCE_UPDATE_INTERVAL then return end
-            lastUpdateTime = currentTime
-            
-            if not resource or not resource.Parent then
-                Text.Visible = false
-                Text:Remove()
-                resourceCache[resource] = nil
-                if connection then connection:Disconnect() end
-                return
-            end
-            
-            -- Use cached position and only update when needed
-            local cached = resourceCache[resource]
-            if not cached then return end
-            
-            local distance = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
-                (LocalPlayer.Character.HumanoidRootPart.Position - cached.position).Magnitude or 0
-            
-            if distance > PERFORMANCE.MAX_DISTANCE then
-                Text.Visible = false
-                return
-            end
-            
-            local vector, onScreen = Camera:WorldToViewportPoint(cached.position)
-            
-            if onScreen and _G.OreESP then
-                Text.Position = Vector2.new(vector.X, vector.Y)
-                Text.Text = resource.Name .. " [" .. math.floor(distance) .. "m]"
-                Text.Color = _G.OreColor
-                Text.Visible = true
-            else
-                Text.Visible = false
-            end
-        end)
-    end
-    
-    coroutine.wrap(Update)()
-end
-
--- Add cache cleanup routine
-local function cleanupCaches()
-    while task.wait(PERFORMANCE.CLEANUP_INTERVAL) do
-        for cache in pairs({resourceCache, clothCache, backpackCache, chamCache}) do
-            for key, value in pairs(cache) do
-                if not key or not key.Parent then
-                    if value.text then value.text:Remove() end
-                    cache[key] = nil
-                end
-            end
-        end
-    end
-end
-
-coroutine.wrap(cleanupCaches)()
-
--- ESP Configuration and Performance Settings
-local ESP_CONFIG = {
-    UPDATE_INTERVAL = 0.1, -- Update ESP every 100ms
-    MAX_DISTANCE = 1000,
-    CLEANUP_INTERVAL = 5,
-    MAX_CACHED_OBJECTS = 50
-}
-
--- Use weak tables for automatic cleanup
-resourceCache = setmetatable({}, {__mode = "k"})
-clothCache = setmetatable({}, {__mode = "k"})
-backpackCache = setmetatable({}, {__mode = "k"})
-chamCache = setmetatable({}, {__mode = "k"})
-
--- Consolidate RenderStepped connections
-local function mainLoop()
-    local lastTick = 0
-    local UPDATE_INTERVAL = 1/60 -- 60 FPS cap
-    
-    RunService.RenderStepped:Connect(function()
-        local currentTick = tick()
-        if currentTick - lastTick < UPDATE_INTERVAL then return end
-        lastTick = currentTick
-        
-        -- Update FOV Circle
-        if isFOVVisible then
-            UpdateFovCircle()
-        end
-        
-        -- Update Aimbot
-        if isAimbotEnabled then
-            LockCameraOnClosestPlayer()
-        end
-        
-        -- Update Crosshair
-        if isCrosshairEnabled then
-            UpdateCrosshair()
-        end
-        
-        -- Update Third Person
-        if thirdPersonEnabled then
-            updateThirdPerson()
-        end
-    end)
-end
-
--- ESP Performance Optimization
-local function updateESP()
-    local lastUpdate = 0
-
-    RunService.Heartbeat:Connect(function()
-        local currentTime = tick()
-        if currentTime - lastUpdate < ESP_CONFIG.UPDATE_INTERVAL then return end
-        lastUpdate = currentTime
-
-        if not isESPEnabled then return end
-
-        local playerRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not playerRoot then return end
-
-        -- Update all ESP types in one loop
-        for object, espData in pairs(cachedParts) do
-            if object and object.Parent then
-                local rootPart = object:FindFirstChild("HumanoidRootPart")
-                if rootPart then
-                    local distance = (rootPart.Position - playerRoot.Position).Magnitude
-                    if distance <= ESP_CONFIG.MAX_DISTANCE then
-                        updateESPObject(object, espData, distance)
-                    else
-                        setESPVisible(espData, false)
+            if target and humanoid and humanoid.Health > 0 and IsInFov(target.Position) then
+                if teamCheck then
+                    local plr = Players:FindFirstChild(model.Name)
+                    if plr and plr.Team == Players.LocalPlayer.Team then
+                        continue
                     end
-                else
-                    cleanupESP(object)
                 end
-            else
-                cleanupESP(object)
-            end
-        end
-    end)
-end
 
--- Efficient cache cleanup system
-local function initializeCacheCleanup()
-    local function cleanCache(cache)
-        for object, data in pairs(cache) do
-            if not object or not object.Parent then
-                if data.text then
-                    data.text:Remove()
+                local screenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mouse).Magnitude
+                    if dist < closestDistance then
+                        if not isVisibilityCheckEnabled or IsVisible(target) then
+                            closest = target
+                            closestDistance = dist
+                        end
+                    end
                 end
-                cache[object] = nil
             end
         end
     end
-    
-    coroutine.wrap(function()
-        while task.wait(ESP_CONFIG.CLEANUP_INTERVAL) do
-            cleanCache(resourceCache)
-            cleanCache(clothCache)
-            cleanCache(backpackCache)
-            cleanCache(chamCache)
-        end
-    end)()
+
+    return closest
 end
 
--- Optimize ESP object updates
-local function updateESPObject(object, espData)
-    if not object or not object.Parent then return false end
+RunService.RenderStepped:Connect(function()
+    if not isAimbotEnabled or not rightMouseHeld then return end
 
-    local root = object:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-
-    local humanoid = object:FindFirstChild("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return false end
-
-    local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
-    local distance = (Camera.CFrame.Position - root.Position).Magnitude
-
-    -- Check visibility based on screen position and distance
-    if not onScreen or distance > ESP_CONFIG.MAX_DISTANCE then
-        setESPVisible(espData, false)
-        return true
-    end
-
-    -- Cache calculations
-    local screenPosition = Vector2.new(pos.X, pos.Y)
-    local scale = 1 / (distance * 0.03)
-    local boxSize = Vector2.new(
-        math.clamp(60 * scale, 6, 60),
-        math.clamp(80 * scale, 8, 80)
-    )
-
-    -- Update ESP elements
-    updateESPElements(espData, screenPosition, boxSize, distance, humanoid)
-    return true
-end
-
--- Remove all existing update loops
--- ...existing code... (remove all other RunService.RenderStepped/Heartbeat connections)
-
--- Keep the rest of the code unchanged
--- ...existing code...
-
-Library:Init()
-
--- Fix broken line in crosshair update
-local function UpdateCrosshair()
-    if not isCrosshairEnabled then return end
-    
-    local center = UserInputService:GetMouseLocation()
-    
-    crosshairLines.left.From = Vector2.new(center.X - crosshairSize, center.Y)
-    crosshairLines.left.To = Vector2.new(center.X - 2, center.Y)
-    
-    crosshairLines.right.From = Vector2.new(center.X + 2, center.Y)
-    crosshairLines.right.To = Vector2.new(center.X + crosshairSize, center.Y)
-    
-    crosshairLines.top.From = Vector2.new(center.X, center.Y - crosshairSize)
-    crosshairLines.top.To = Vector2.new(center.X, center.Y - 2)
-    
-    crosshairLines.bottom.From = Vector2.new(center.X, center.Y + 2)
-    crosshairLines.bottom.To = Vector2.new(center.X, center.Y + crosshairSize)
-end
-
--- Fix malformed update manager
-local UpdateManager = {
-    lastUpdate = {
-        main = 0,
-        esp = 0,
-        chams = 0,
-        crosshair = 0,
-        fov = 0
-    },
-    intervals = {
-        main = 1/60,    -- 60 FPS
-        esp = 0.1,      -- 10 updates per second
-        chams = 0.1,    -- 10 updates per second
-        crosshair = 1/30, -- 30 updates per second
-        fov = 1/30      -- 30 updates per second
-    }
-}
-
--- Replace broken RunService connection with fixed version
-RunService.Heartbeat:Connect(function()
-    local currentTime = tick()
-    
-    if currentTime - UpdateManager.lastUpdate.main >= UpdateManager.intervals.main then
-        UpdateManager.lastUpdate.main = currentTime
-        
-        if isAimbotEnabled then
-            LockCameraOnClosestPlayer()
-        end
-        
-        if thirdPersonEnabled then
-            updateThirdPerson()
-        end
-    end
-    
-    if currentTime - UpdateManager.lastUpdate.esp >= UpdateManager.intervals.esp and isESPEnabled then
-        UpdateManager.lastUpdate.esp = currentTime
-        for _, player in ipairs(workspace.Players:GetChildren()) do
-            if player ~= LocalPlayer.Character and cachedParts[player] then
-                updateESPObject(player, cachedParts[player])
-            end
-        end
-    end
-    
-    if currentTime - UpdateManager.lastUpdate.crosshair >= UpdateManager.intervals.crosshair then
-        UpdateManager.lastUpdate.crosshair = currentTime
-        if isCrosshairEnabled then
-            UpdateCrosshair()
-        end
-        if isFOVVisible then
-            UpdateFovCircle()
-        end
+    local target = GetClosestPlayer()
+    if target then
+        local targetPos = target.Position
+        local camPos = Camera.CFrame.Position
+        local newCFrame = CFrame.new(camPos, targetPos)
+        Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
     end
 end)
-
-Library:Init()
