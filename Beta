@@ -891,6 +891,7 @@ end)
 
 RunService.RenderStepped:Connect(function()
     if oreESPEnabled then
+        -- Handle Ore ESP visibility
         local oreFolder = workspace:FindFirstChild("Resources")
         if oreFolder then
             for _, ore in pairs(oreFolder:GetChildren()) do
@@ -921,8 +922,30 @@ RunService.RenderStepped:Connect(function()
                 end
             end
         end
+    else
+        -- Clean up Ore ESP when disabled
+        for _, ore in pairs(workspaceESP) do
+            if ore.text then
+                ore.text.Visible = false  -- Hide the text
+            end
+        end
     end
 
+    -- Clean up ESP for other objects (if required)
+    if not oreESPEnabled then
+        local oreFolder = workspace:FindFirstChild("Resources")
+        if oreFolder then
+            for _, ore in pairs(oreFolder:GetChildren()) do
+                if workspaceESP[ore] then
+                    if workspaceESP[ore].text then
+                        workspaceESP[ore].text:Remove()  -- Remove text objects when Ore ESP is disabled
+                    end
+                    workspaceESP[ore] = nil  -- Remove the ore from workspaceESP
+                end
+            end
+        end
+    end
+    
     if clothESPEnabled then
         local clothFolder = workspace:FindFirstChild("ClothItems")
         if clothFolder then
