@@ -25,6 +25,10 @@ local hitboxTransparency = 0
 local TPWalkSpeed = 0
 local originalModelTransparency = {}
 
+local oreESP = {}
+local resourcesFolder = workspace:FindFirstChild("Resources")
+local clothFolder = workspace:FindFirstChild("ClothPlants")
+
 -- FOV settings
 local fovAmount = 120
 local teamCheck = false
@@ -58,6 +62,11 @@ local distanceEnabled = false
 local xrayToggledOn = false
 local showHealth = false
 local showTool = false
+
+local stoneOreEnabled = false
+local brimstoneOreEnabled = false
+local ironOreEnabled = false
+local clothEnabled = false
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -376,6 +385,38 @@ local function updateXray()
     end
 end
 
+local function createOreESP(ore)
+    if not ore or not ore:IsA("Model") then return end  -- Safety check
+
+    -- Find a part inside the ore model that has a Position property
+    local part = ore:FindFirstChildWhichIsA("BasePart")
+    if not part then
+        print("No BasePart found in ore model: " .. ore.Name)  -- Debugging output
+        return
+    end
+
+    local oreESPInstance = {
+        text = Drawing.new("Text"),
+        highlight = Instance.new("Highlight")
+    }
+
+    oreESPInstance.text.Size = 16
+    oreESPInstance.text.Center = true
+    oreESPInstance.text.Outline = true
+    oreESPInstance.text.Visible = false
+    oreESPInstance.text.Color = espColor
+    
+    oreESPInstance.highlight.FillColor = espColor
+    oreESPInstance.highlight.OutlineColor = Color3.new(1, 1, 1)
+    oreESPInstance.highlight.FillTransparency = 0.5
+    oreESPInstance.highlight.OutlineTransparency = 0
+    oreESPInstance.highlight.Enabled = false
+    oreESPInstance.highlight.Adornee = part  -- Adornee is now set to the part
+    oreESPInstance.highlight.Parent = game:GetService("CoreGui")
+
+    oreESP[ore] = oreESPInstance
+end
+
 MainLeftBox:AddToggle('AimbotEnabled', {
     Text = 'Enable Aimbot',
     Default = false,
@@ -604,6 +645,42 @@ ESPLeftBox:AddToggle('Distance ESP', {
                 esp.highlight.Enabled = false
             end
         end
+    end
+})
+
+ESPRightBox:AddToggle('StoneOreESP', {
+    Text = 'Stone Ore ESP',
+    Default = false,
+    Tooltip = 'Toggle Stone Ore ESP',
+    Callback = function(value)
+        stoneOreEnabled = value
+    end
+})
+
+ESPRightBox:AddToggle('BrimstoneOreESP', {
+    Text = 'Brimstone Ore ESP',
+    Default = false,
+    Tooltip = 'Toggle Brimstone Ore ESP',
+    Callback = function(value)
+        brimstoneOreEnabled = value
+    end
+})
+
+ESPRightBox:AddToggle('IronOreESP', {
+    Text = 'Iron Ore ESP',
+    Default = false,
+    Tooltip = 'Toggle Iron Ore ESP',
+    Callback = function(value)
+        ironOreEnabled = value
+    end
+})
+
+ESPRightBox:AddToggle('ClothESP', {
+    Text = 'Cloth ESP',
+    Default = false,
+    Tooltip = 'Toggle Cloth ESP',
+    Callback = function(value)
+        clothEnabled = value
     end
 })
 
@@ -840,6 +917,94 @@ RunService.RenderStepped:Connect(function()
         local newCFrame = CFrame.new(camPos, targetPos)
 
         Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    -- Debugging output to check if the folders exist and are loaded
+    if not resourcesFolder then
+        print("Resources folder not found!")
+        return
+    end
+
+    if not clothFolder then
+        print("ClothPlants folder not found!")
+        return
+    end
+
+    if not espEnabled then
+        for _, esp in pairs(oreESP) do
+            esp.text.Visible = false
+            esp.highlight.Enabled = false
+        end
+        return
+    end
+
+    -- Update Resource Ore ESP
+    for _, ore in pairs(resourcesFolder:GetChildren()) do
+        if ore:IsA("Model") then
+            -- Debugging log to check ore names
+            print("Checking Ore: " .. ore.Name)
+
+            local showOreESP = false
+            if ore.Name == "Stone Ore" and stoneOreEnabled then
+                showOreESP = true
+            elseif ore.Name == "Brimstone Ore" and brimstoneOreEnabled then
+                showOreESP = true
+            elseif ore.Name == "Iron Ore" and ironOreEnabled then
+                showOreESP = true
+            end
+
+            -- If ore ESP is enabled, create it
+            if showOreESP then
+                if not oreESP[ore] then
+                    createOreESP(ore)
+                end
+
+                local oreESPInstance = oreESP[ore]
+                local part = ore:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+
+                    if onScreen then
+                        oreESPInstance.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                        oreESPInstance.text.Text = ore.Name
+                        oreESPInstance.text.Visible = true
+                        oreESPInstance.highlight.Enabled = true
+                    else
+                        oreESPInstance.text.Visible = false
+                        oreESPInstance.highlight.Enabled = false
+                    end
+                end
+            else
+                if oreESP[ore] then
+                    oreESP[ore].text.Visible = false
+                    oreESP[ore].highlight.Enabled = false
+                end
+            end
+        end
+    end
+
+    -- Update Cloth ESP
+    if clothFolder and clothEnabled then
+        for _, cloth in pairs(clothFolder:GetChildren()) do
+            if not oreESP[cloth] then
+                createOreESP(cloth)
+            end
+
+            local clothESP = oreESP[cloth]
+            local screenPos, onScreen = Camera:WorldToViewportPoint(cloth.Position)
+
+            if onScreen then
+                clothESP.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                clothESP.text.Text = "Cloth"
+                clothESP.text.Visible = true
+                clothESP.highlight.Enabled = true
+            else
+                clothESP.text.Visible = false
+                clothESP.highlight.Enabled = false
+            end
+        end
     end
 end)
 
