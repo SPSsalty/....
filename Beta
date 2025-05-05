@@ -465,7 +465,7 @@ MainHitboxBox:AddToggle('HitboxExpander', {
 
 MainHitboxBox:AddSlider('HitboxSize', {
     Text = 'Hitbox Size',
-    Default = 0,
+    Default = 15,
     Min = 0,
     Max = 50,
     Rounding = 1,
@@ -478,7 +478,7 @@ MainHitboxBox:AddSlider('HitboxSize', {
 
 MainHitboxBox:AddSlider('HitboxTransparency', {
     Text = 'Hitbox Transparency',
-    Default = 0,
+    Default = 0.9,
     Min = 0,
     Max = 1,
     Rounding = 2,
