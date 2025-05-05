@@ -107,7 +107,6 @@ local MiscLeftBox = Tabs.Misc:AddLeftGroupbox('Miscellaneous')
 local MovementBox = Tabs.Misc:AddRightGroupbox('Another Miscellaneous')
 local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
 local ThirdPersonBox = Tabs.Misc:AddRightGroupbox('Third Person')
-local NoclipBox = Tabs.Misc:AddRightGroupbox('Noclip')
 
 -- Initialize Drawing objects after UI
 local success, Drawing = pcall(function() return Drawing end)
