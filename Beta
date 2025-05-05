@@ -24,12 +24,6 @@ local hitboxSize = 0
 local hitboxTransparency = 0
 local TPWalkSpeed = 0
 local originalModelTransparency = {}
--- List of ores that are allowed for ESP
-local allowedOres = {
-    ["Iron Ore"] = true,
-    ["Brimstone Ore"] = true,
-    ["Stone Ore"] = true,
-}
 
 -- FOV settings
 local fovAmount = 120
@@ -64,9 +58,6 @@ local distanceEnabled = false
 local xrayToggledOn = false
 local showHealth = false
 local showTool = false
-local oreESPEnabled = false
-local clothESPEnabled = false
-local backpackESPEnabled = false
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -108,7 +99,8 @@ local MainLeftBox = Tabs.Main:AddLeftGroupbox('Aimbot')
 local MainRightBox = Tabs.Main:AddRightGroupbox('FOV Settings')
 local MainCrosshairBox = Tabs.Main:AddRightGroupbox('Crosshair')
 local MainHitboxBox = Tabs.Main:AddLeftGroupbox("Hitbox Expander")
-local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Settings')
+local ESPLeftBox = Tabs.ESP:AddLeftGroupbox('ESP Player')
+local ESPRightBox = Tabs.ESP:AddRightGroupbox('ESP Resource')
 local WeaponsLeftBox = Tabs.WeaponsTab:AddLeftGroupbox("Fast Reload")
 local WorldLeftBox = Tabs.World:AddLeftGroupbox('World Settings')
 local MiscLeftBox = Tabs.Misc:AddLeftGroupbox('Miscellaneous')
@@ -203,15 +195,6 @@ RunService.RenderStepped:Connect(function()
                     end
                 end
                 
-                if showTool then
-                    local tool = model:FindFirstChildOfClass("Tool")
-                    if not tool then
-                        local plr = Players:FindFirstChild(model.Name)
-                        tool = plr and plr:FindFirstChild("Backpack") and plr.Backpack:FindFirstChildOfClass("Tool")
-                    end
-                    table.insert(textLines, tool and ("[" .. tool.Name .. "]") or "[Empty]")
-                end
-                
                 if distanceEnabled then
                     table.insert(textLines, string.format("[%d studs]", math.floor(distance)))
                 end                
@@ -231,11 +214,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     for model, esp in pairs(workspaceESP) do
-        if not model:IsDescendantOf(playersFolder)
-           and not model:IsDescendantOf(workspace:FindFirstChild("OreNodes") or {})
-           and not model:IsDescendantOf(workspace:FindFirstChild("ClothItems") or {})
-           and not model:IsDescendantOf(workspace:FindFirstChild("Backpacks") or {}) then
-    
+        if not model:IsDescendantOf(playersFolder) then
             if esp.text then esp.text:Remove() end
             if esp.highlight then esp.highlight:Destroy() end
             workspaceESP[model] = nil
@@ -629,30 +608,6 @@ ESPLeftBox:AddToggle('Distance ESP', {
     end
 })
 
-ESPLeftBox:AddToggle('OreESP', {
-    Text = 'Ore ESP',
-    Tooltip = 'Show ore locations',
-    Callback = function(state)
-        oreESPEnabled = state
-    end
-})
-
-ESPLeftBox:AddToggle('ClothESP', {
-    Text = 'Cloth ESP',
-    Tooltip = 'Show cloth item positions',
-    Callback = function(state)
-        clothESPEnabled = state
-    end
-})
-
-ESPLeftBox:AddToggle('BackpackESP', {
-    Text = 'Backpack ESP',
-    Tooltip = 'Show dropped backpack items',
-    Callback = function(state)
-        backpackESPEnabled = state
-    end
-})
-
 -- | All ESP Settings And Toggles Above | --
 
 WorldLeftBox:AddToggle('Fullbright', {
@@ -886,120 +841,6 @@ RunService.RenderStepped:Connect(function()
         local newCFrame = CFrame.new(camPos, targetPos)
 
         Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
-    end
-end)
-
-RunService.RenderStepped:Connect(function()
-    if oreESPEnabled then
-        -- Handle Ore ESP visibility
-        local oreFolder = workspace:FindFirstChild("Resources")
-        if oreFolder then
-            for _, ore in pairs(oreFolder:GetChildren()) do
-                if allowedOres[ore.Name] then
-                    if not workspaceESP[ore] then
-                        local text = Drawing.new("Text")
-                        text.Size = 16
-                        text.Center = true
-                        text.Outline = true
-                        text.Color = Color3.fromRGB(255, 255, 0)
-                        text.Visible = true
-                        workspaceESP[ore] = { text = text }
-                    end
-
-                    local pos
-                    if ore:IsA("Model") then
-                        pos = ore.PrimaryPart and ore.PrimaryPart.Position or (ore:FindFirstChildWhichIsA("BasePart") and ore:FindFirstChildWhichIsA("BasePart").Position)
-                    else
-                        pos = ore.Position
-                    end
-
-                    if pos then
-                        local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
-                        workspaceESP[ore].text.Position = Vector2.new(screenPos.X, screenPos.Y)
-                        workspaceESP[ore].text.Text = ore.Name
-                        workspaceESP[ore].text.Visible = onScreen
-                    end
-                end
-            end
-        end
-    else
-        -- Clean up Ore ESP when disabled
-        for _, ore in pairs(workspaceESP) do
-            if ore.text then
-                ore.text.Visible = false  -- Hide the text
-            end
-        end
-    end
-
-    -- Clean up ESP for other objects (if required)
-    if not oreESPEnabled then
-        local oreFolder = workspace:FindFirstChild("Resources")
-        if oreFolder then
-            for _, ore in pairs(oreFolder:GetChildren()) do
-                if workspaceESP[ore] then
-                    if workspaceESP[ore].text then
-                        workspaceESP[ore].text:Remove()  -- Remove text objects when Ore ESP is disabled
-                    end
-                    workspaceESP[ore] = nil  -- Remove the ore from workspaceESP
-                end
-            end
-        end
-    end
-    
-    if clothESPEnabled then
-        local clothFolder = workspace:FindFirstChild("ClothItems")
-        if clothFolder then
-            for _, cloth in pairs(clothFolder:GetChildren()) do
-                if not workspaceESP[cloth] then
-                    local text = Drawing.new("Text")
-                    text.Size = 16
-                    text.Center = true
-                    text.Outline = true
-                    text.Color = Color3.fromRGB(255, 255, 255)
-                    text.Visible = true
-                    workspaceESP[cloth] = { text = text }
-                end
-
-                local pos = cloth.Position or (cloth:IsA("Model") and cloth.PrimaryPart and cloth.PrimaryPart.Position)
-                if pos then
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
-                    workspaceESP[cloth].text.Position = Vector2.new(screenPos.X, screenPos.Y)
-                    workspaceESP[cloth].text.Text = cloth.Name
-                    workspaceESP[cloth].text.Visible = onScreen
-                end
-            end
-        end
-    end
-
-    if backpackESPEnabled then
-        local backpackFolder = workspace:FindFirstChild("Backpacks")
-        if backpackFolder then
-            for _, backpack in pairs(backpackFolder:GetChildren()) do
-                if not workspaceESP[backpack] then
-                    local text = Drawing.new("Text")
-                    text.Size = 16
-                    text.Center = true
-                    text.Outline = true
-                    text.Color = Color3.fromRGB(255, 128, 0)
-                    text.Visible = true
-                    workspaceESP[backpack] = { text = text }
-                end
-
-                local pos
-                if backpack:IsA("Model") then
-                    pos = backpack.PrimaryPart and backpack.PrimaryPart.Position or (backpack:FindFirstChildWhichIsA("BasePart") and backpack:FindFirstChildWhichIsA("BasePart").Position)
-                else
-                    pos = backpack.Position
-                end
-
-                if pos then
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
-                    workspaceESP[backpack].text.Position = Vector2.new(screenPos.X, screenPos.Y)
-                    workspaceESP[backpack].text.Text = backpack.Name
-                    workspaceESP[backpack].text.Visible = onScreen
-                end
-            end
-        end
     end
 end)
 
