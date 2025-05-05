@@ -57,6 +57,8 @@ local isTpWalking = false
 local tpwalking = false
 local tpwalking_connection = nil
 local distanceEnabled = false
+local xrayToggledOn = false
+
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -675,10 +677,14 @@ MiscLeftBox:AddToggle('XRay', {
     Text = 'XRay',
     Default = false,
     Callback = function(value)
-        xrayEnabled = value
-        updateXray()
+        xrayToggledOn = value
+        if not value then
+            xrayEnabled = false
+            updateXray()
+        end
     end
 })
+
 
 MiscLeftBox:AddSlider('XRayTransparency', {
     Text = 'XRay Transparency',
@@ -766,11 +772,17 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == keybindKey and not gameProcessed then
-        xrayEnabled = not xrayEnabled
-        updateXray()
-        Library:Notify('Xray ' .. (xrayEnabled and "Enabled" or "Disabled"), 2)
+        if xrayToggledOn then
+            xrayEnabled = not xrayEnabled
+            updateXray()
+            Library:Notify('Xray ' .. (xrayEnabled and "Enabled" or "Disabled"), 2)
+        elseif xrayEnabled then
+            -- Safety: disable XRay if toggle was turned off but key is still toggling
+            xrayEnabled = false
+            updateXray()
+        end
     end
-end)
+end)    
 
 RunService.RenderStepped:Connect(function()
     if isFOVVisible then
