@@ -22,6 +22,9 @@ local excludedModels = {
 }
 local hitboxSize = 0
 local hitboxTransparency = 0
+local TPWalkSpeed = 0
+local originalModelTransparency = {}
+
 
 -- FOV settings
 local fovAmount = 120
@@ -49,7 +52,11 @@ local espEnabled = false
 local isFullbrightEnabled = false
 local isHitboxExpander = false
 local expanderConnection = nil
-
+local showWeapon = false
+local isTpWalking = false
+local tpwalking = false
+local tpwalking_connection = nil
+local distanceEnabled = false
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -66,6 +73,8 @@ local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
 
 -- Create window
 local Window = Library:CreateWindow({
@@ -171,23 +180,51 @@ RunService.RenderStepped:Connect(function()
             local distance = (rootPart.Position - pos).Magnitude
 
             if distance <= maxRenderDistance and onScreen then
-                esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 40)
+            local nameLine = showNames and model.Name or ""
+            local heldTool = ""
+            local distanceLine = distanceEnabled and string.format("[%d studs]", math.floor(distance)) or ""
 
-                local nameLine = showNames and model.Name or ""
-                local distanceLine = distanceEnabled and string.format("[%d studs]", math.floor(distance)) or ""
-
-                if nameLine ~= "" and distanceLine ~= "" then
-                    esp.text.Text = nameLine .. "\n" .. distanceLine
-                    esp.text.Visible = true
-                elseif nameLine ~= "" then
-                    esp.text.Text = nameLine
-                    esp.text.Visible = true
-                elseif distanceLine ~= "" then
-                    esp.text.Text = distanceLine
-                    esp.text.Visible = true
-                else
-                    esp.text.Visible = false
+            if showWeapon then
+                local player = Players:FindFirstChild(model.Name)
+                if player then
+                    local character = player.Character
+                    if character then
+                        for _, tool in ipairs(character:GetChildren()) do
+                            if tool:IsA("Tool") then
+                                heldTool = tool.Name
+                                break
+                            end
+                        end
+                    end
+                    
+                    if heldTool == "" and player:FindFirstChild("Backpack") then
+                        for _, tool in ipairs(player.Backpack:GetChildren()) do
+                            if tool:IsA("Tool") then
+                                heldTool = tool.Name
+                                break
+                            end
+                        end
+                    end
+                    
+                    if heldTool == "" then
+                        heldTool = "[Empty]"
+                    end
                 end
+            end
+            local textLines = {}
+
+            if nameLine ~= "" then table.insert(textLines, nameLine) end
+            if heldTool ~= "" then table.insert(textLines, heldTool) end
+            if distanceLine ~= "" then table.insert(textLines, distanceLine) end
+
+            -- Adjust position to shift name higher and distance lower
+            local lineCount = #textLines
+            local offset = -20 * lineCount  -- moves the entire block up slightly
+            esp.text.Position = Vector2.new(screenPos.X, screenPos.Y + offset)
+
+            esp.text.Text = table.concat(textLines, "\n")
+            esp.text.Visible = #textLines > 0
+                                        
 
                 esp.highlight.Enabled = chamsEnabled
             else
@@ -328,10 +365,23 @@ local function setTransparency(model, transparency)
     if typeof(transparency) ~= "number" then return end
     for _, descendant in ipairs(model:GetDescendants()) do
         if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
-            descendant.Transparency = transparency
+            if xrayEnabled then
+                -- Save original transparency once
+                if not originalModelTransparency[descendant] then
+                    originalModelTransparency[descendant] = descendant.Transparency
+                end
+                descendant.Transparency = transparency
+            else
+                -- Restore original transparency
+                if originalModelTransparency[descendant] then
+                    descendant.Transparency = originalModelTransparency[descendant]
+                    originalModelTransparency[descendant] = nil
+                end
+            end
         end
     end
 end
+
 
 local function updateXray()
     if folder then
@@ -650,6 +700,51 @@ MiscLeftBox:AddInput('XRayBind', {
     end
 })
 
+MovementBox:AddToggle('TPWalk', {
+    Text = 'Speedhack',
+    Default = false,
+    Tooltip = 'Makes you run faster [BLATANT]',
+    Callback = function(value)
+        isTpWalking = value
+        tpwalking = value
+        if value then
+            local chr = LocalPlayer.Character
+            local hum = chr and chr:FindFirstChildWhichIsA("Humanoid")
+
+            if hum then
+                local function tpwalk()
+                    if tpwalking and chr and hum and hum.Parent then
+                        if hum.MoveDirection.Magnitude > 0 then
+                            chr:TranslateBy(hum.MoveDirection * TPWalkSpeed / 100)
+                        end
+                    end
+                end
+
+                local tpwalking_connection = RunService.Heartbeat:Connect(function()
+                    pcall(function()
+                        if not isTpWalking then
+                            tpwalking_connection:Disconnect()
+                            return
+                        end
+                        tpwalk()
+                    end)
+                end)
+            end
+        end
+    end
+})
+
+MovementBox:AddSlider('TPWalkSpeed', {
+    Text = 'Speedhack Speed',
+    Default = 0,
+    Min = 0,
+    Max = 25,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(value)
+        TPWalkSpeed = value
+    end
+})
 
 -- | All Misc Settings And Toggles Above | --
 
