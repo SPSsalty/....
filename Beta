@@ -20,6 +20,8 @@ local folder = workspace:FindFirstChild("BuiltObjects")
 local excludedModels = {
     "Large Storage Box", "Furnace", "Campfire", "Repair Bench", "Small Storage Box"
 }
+local hitboxSize = 0
+local hitboxTransparency = 0
 
 -- FOV settings
 local fovAmount = 120
@@ -45,6 +47,9 @@ local isVisibilityCheckEnabled = false
 local showNames = false
 local espEnabled = false
 local isFullbrightEnabled = false
+local isHitboxExpander = false
+local expanderConnection = nil
+
 
 --Aimbot Settings
 local smoothness = 1 -- Default smoothness value
@@ -404,6 +409,83 @@ MainRightBox:AddLabel('FOV Color'):AddColorPicker('FOVColor', {
     Title = 'FOV Circle Color',
     Callback = function(value)
         fovCircle.Color = value
+    end
+})
+
+MainHitboxBox:AddToggle('HitboxExpander', {
+    Text = 'Hitbox Expander',
+    Default = false,
+    Tooltip = 'Expands enemy and helicopter hitboxes',
+    Callback = function(value)
+        isHitboxExpander = value
+
+        if expanderConnection then
+            expanderConnection:Disconnect()
+            expanderConnection = nil
+            for _, player in ipairs(workspace.Players:GetChildren()) do
+                if player ~= Players.LocalPlayer.Character then
+                    local head = player:FindFirstChild("Head")
+                    if head then
+                        head.Size = Vector3.new(1, 1, 1)
+                        head.Transparency = 0
+                    end
+                end
+            end
+            local heli = workspace:FindFirstChild("ActiveRaiderX")
+            if heli and heli:FindFirstChild("Base") then
+                heli.Base.Size = Vector3.new(1, 1, 1)
+                heli.Base.Transparency = 0
+            end
+        end
+
+        if value then
+            expanderConnection = RunService.Heartbeat:Connect(function()
+                for _, player in ipairs(workspace.Players:GetChildren()) do
+                    if player ~= Players.LocalPlayer.Character then
+                        local head = player:FindFirstChild("Head")
+                        if head then
+                            head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                            head.Transparency = hitboxTransparency
+                            head.Massless = true
+                            head.CanCollide = false
+                        end
+                    end
+                end
+                local heli = workspace:FindFirstChild("ActiveRaiderX")
+                if heli and heli:FindFirstChild("Base") then
+                    heli.Base.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    heli.Base.Transparency = hitboxTransparency
+                    heli.Base.Massless = true
+                    heli.Base.CanCollide = false
+                end
+            end)
+        end
+    end
+})
+
+MainHitboxBox:AddSlider('HitboxSize', {
+    Text = 'Hitbox Size',
+    Default = 0,
+    Min = 0,
+    Max = 50,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Adjust hitbox size',
+    Callback = function(value)
+        hitboxSize = value
+    end
+})
+
+MainHitboxBox:AddSlider('HitboxTransparency', {
+    Text = 'Hitbox Transparency',
+    Default = 0,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Compact = false,
+    Tooltip = 'Adjust hitbox transparency',
+    Callback = function(value)
+        hitboxTransparency = value
     end
 })
 
