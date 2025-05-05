@@ -362,17 +362,16 @@ local function isExcluded(modelName)
 end
 
 local function setTransparency(model, transparency)
-    if typeof(transparency) ~= "number" then return end
     for _, descendant in ipairs(model:GetDescendants()) do
         if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
-            if xrayEnabled then
+            if transparency ~= nil then
                 -- Save original transparency once
                 if not originalModelTransparency[descendant] then
                     originalModelTransparency[descendant] = descendant.Transparency
                 end
                 descendant.Transparency = transparency
             else
-                -- Restore original transparency
+                -- Restore
                 if originalModelTransparency[descendant] then
                     descendant.Transparency = originalModelTransparency[descendant]
                     originalModelTransparency[descendant] = nil
@@ -382,16 +381,21 @@ local function setTransparency(model, transparency)
     end
 end
 
-
 local function updateXray()
-    if folder then
-        for _, model in ipairs(folder:GetChildren()) do
-            if model:IsA("Model") and not isExcluded(model.Name) then
-                setTransparency(model, xrayEnabled and transparencyValue or 0)
+    if not folder then
+        warn("Folder not found in workspace.")
+        return
+    end
+
+    for _, model in ipairs(folder:GetChildren()) do
+        if model:IsA("Model") and not isExcluded(model.Name) then
+            if xrayEnabled then
+                setTransparency(model, transparencyValue)
+            else
+                -- Restore original transparencies
+                setTransparency(model, nil) -- nil will trigger restoration
             end
         end
-    else
-        warn("Folder not found in workspace.")
     end
 end
 
