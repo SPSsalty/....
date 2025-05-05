@@ -52,7 +52,6 @@ local espEnabled = false
 local isFullbrightEnabled = false
 local isHitboxExpander = false
 local expanderConnection = nil
-local showWeapon = false
 local isTpWalking = false
 local tpwalking = false
 local tpwalking_connection = nil
@@ -186,49 +185,18 @@ RunService.RenderStepped:Connect(function()
             local heldTool = ""
             local distanceLine = distanceEnabled and string.format("[%d studs]", math.floor(distance)) or ""
 
-            if showWeapon then
-                local player = Players:FindFirstChild(model.Name)
-                if player then
-                    local character = player.Character
-                    if character then
-                        for _, tool in ipairs(character:GetChildren()) do
-                            if tool:IsA("Tool") then
-                                heldTool = tool.Name
-                                break
-                            end
-                        end
-                    end
-                    
-                    if heldTool == "" and player:FindFirstChild("Backpack") then
-                        for _, tool in ipairs(player.Backpack:GetChildren()) do
-                            if tool:IsA("Tool") then
-                                heldTool = tool.Name
-                                break
-                            end
-                        end
-                    end
-                    
-                    if heldTool == "" then
-                        heldTool = "[Empty]"
-                    end
-                end
-            end
             local textLines = {}
 
             if nameLine ~= "" then table.insert(textLines, nameLine) end
-            if heldTool ~= "" then table.insert(textLines, heldTool) end
             if distanceLine ~= "" then table.insert(textLines, distanceLine) end
-
-            -- Adjust position to shift name higher and distance lower
+            
             local lineCount = #textLines
-            local offset = -20 * lineCount  -- moves the entire block up slightly
+            local offset = -20 * lineCount
             esp.text.Position = Vector2.new(screenPos.X, screenPos.Y + offset)
-
+            
             esp.text.Text = table.concat(textLines, "\n")
-            esp.text.Visible = #textLines > 0
-                                        
-
-                esp.highlight.Enabled = chamsEnabled
+            esp.text.Visible = #textLines > 0            
+            esp.highlight.Enabled = chamsEnabled
             else
                 esp.text.Visible = false
                 esp.highlight.Enabled = false
