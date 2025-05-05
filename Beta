@@ -835,3 +835,12 @@ RunService.RenderStepped:Connect(function()
         Camera.CFrame = Camera.CFrame:Lerp(newCFrame, smoothness)
     end
 end)
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings() 
+SaveManager:SetIgnoreIndexes({ 'MenuKeybind' }) 
+ThemeManager:SetFolder('Auralis')
+SaveManager:SetFolder('Auralis/specific-game')
+SaveManager:BuildConfigSection(Tabs['UI Settings']) 
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
