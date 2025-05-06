@@ -33,7 +33,7 @@ local clothFolder = workspace:FindFirstChild("ClothPlants")
 local fovAmount = 120
 local teamCheck = false
 local targetPart = "Head"  -- Default target is Head
-local maxRenderDistance = 1000 -- Adjustable global max render distance
+local espRenderDistance = 1000 -- default, will be updated by slider
 
 -- FOV Circle
 local fovCircle = Drawing.new("Circle")
@@ -189,7 +189,7 @@ RunService.RenderStepped:Connect(function()
             local screenPos, onScreen = camera:WorldToViewportPoint(pos)
             local distance = (rootPart.Position - pos).Magnitude
 
-            if distance <= maxRenderDistance and onScreen then
+            if distance <= espRenderDistance and onScreen then
                 local textLines = {}
 
                 if showNames then
@@ -312,7 +312,7 @@ RunService.RenderStepped:Connect(function()
         if teamCheck and player.Team == Players.LocalPlayer.Team then continue end
 
         local distance = (localRoot.Position - character.HumanoidRootPart.Position).Magnitude
-        if distance > maxRenderDistance then continue end
+        if distance > espRenderDistance then continue end
 
         -- Apply Chams to character parts
         for _, part in ipairs(character:GetDescendants()) do
@@ -385,36 +385,32 @@ local function updateXray()
     end
 end
 
-local function createOreESP(ore)
-    if not ore or not ore:IsA("Model") then return end  -- Safety check
+local function createResourceESP(model)
+    if not model or not model:IsA("Model") then return end
 
-    -- Find a part inside the ore model that has a Position property
-    local part = ore:FindFirstChildWhichIsA("BasePart")
-    if not part then
-        print("No BasePart found in ore model: " .. ore.Name)  -- Debugging output
-        return
-    end
+    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+    if not part then return end
 
-    local oreESPInstance = {
+    local resourceESPInstance = {
         text = Drawing.new("Text"),
         highlight = Instance.new("Highlight")
     }
 
-    oreESPInstance.text.Size = 16
-    oreESPInstance.text.Center = true
-    oreESPInstance.text.Outline = true
-    oreESPInstance.text.Visible = false
-    oreESPInstance.text.Color = espColor
-    
-    oreESPInstance.highlight.FillColor = espColor
-    oreESPInstance.highlight.OutlineColor = Color3.new(1, 1, 1)
-    oreESPInstance.highlight.FillTransparency = 0.5
-    oreESPInstance.highlight.OutlineTransparency = 0
-    oreESPInstance.highlight.Enabled = false
-    oreESPInstance.highlight.Adornee = part  -- Adornee is now set to the part
-    oreESPInstance.highlight.Parent = game:GetService("CoreGui")
+    resourceESPInstance.text.Size = 16
+    resourceESPInstance.text.Center = true
+    resourceESPInstance.text.Outline = true
+    resourceESPInstance.text.Visible = false
+    resourceESPInstance.text.Color = espColor
 
-    oreESP[ore] = oreESPInstance
+    resourceESPInstance.highlight.FillColor = espColor
+    resourceESPInstance.highlight.OutlineColor = Color3.new(1, 1, 1)
+    resourceESPInstance.highlight.FillTransparency = 0.5
+    resourceESPInstance.highlight.OutlineTransparency = 0
+    resourceESPInstance.highlight.Enabled = false
+    resourceESPInstance.highlight.Adornee = part
+    resourceESPInstance.highlight.Parent = game:GetService("CoreGui")
+
+    oreESP[model] = resourceESPInstance
 end
 
 MainLeftBox:AddToggle('AimbotEnabled', {
@@ -574,6 +570,19 @@ ESPLeftBox:AddToggle('ESP Toggle', {
                 esp.highlight.Enabled = false
             end
         end
+    end
+})
+
+ESPLeftBox:AddSlider('RenderDistance', {
+    Text = 'ESP Distance',
+    Default = 1000,
+    Min = 200,
+    Max = 2000,
+    Rounding = 0,
+    Compact = false,
+    Tooltip = 'Max distance for Player, Ore, and Cloth ESP',
+    Callback = function(value)
+        espRenderDistance = value
     end
 })
 
@@ -921,18 +930,8 @@ RunService.RenderStepped:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function()
-    -- Debugging output to check if the folders exist and are loaded
-    if not resourcesFolder then
-        print("Resources folder not found!")
-        return
-    end
-
-    if not clothFolder then
-        print("ClothPlants folder not found!")
-        return
-    end
-
     if not espEnabled then
+        -- Turn off all ESP when the main ESP is off
         for _, esp in pairs(oreESP) do
             esp.text.Visible = false
             esp.highlight.Enabled = false
@@ -940,25 +939,25 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    -- Update Resource Ore ESP
+    -- Update Resource (Ore) ESP
     for _, ore in pairs(resourcesFolder:GetChildren()) do
         if ore:IsA("Model") then
             -- Debugging log to check ore names
             print("Checking Ore: " .. ore.Name)
 
             local showOreESP = false
-            if ore.Name == "Stone Ore" and stoneOreEnabled then
+            if (ore.Name == "Stone Ore" or ore.Name == "Stone Ore Sand") and stoneOreEnabled then
                 showOreESP = true
-            elseif ore.Name == "Brimstone Ore" and brimstoneOreEnabled then
+            elseif (ore.Name == "Brimstone Ore" or ore.Name == "Brimstone Ore Sand") and brimstoneOreEnabled then
                 showOreESP = true
-            elseif ore.Name == "Iron Ore" and ironOreEnabled then
+            elseif (ore.Name == "Iron Ore" or ore.Name == "Iron Ore Sand") and ironOreEnabled then
                 showOreESP = true
             end
 
             -- If ore ESP is enabled, create it
             if showOreESP then
                 if not oreESP[ore] then
-                    createOreESP(ore)
+                    createResourceESP(ore)
                 end
 
                 local oreESPInstance = oreESP[ore]
@@ -966,7 +965,7 @@ RunService.RenderStepped:Connect(function()
                 if part then
                     local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
 
-                    if onScreen then
+                    if onScreen and (Camera.CFrame.Position - part.Position).Magnitude <= espRenderDistance then
                         oreESPInstance.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
                         oreESPInstance.text.Text = ore.Name
                         oreESPInstance.text.Visible = true
@@ -988,24 +987,56 @@ RunService.RenderStepped:Connect(function()
     -- Update Cloth ESP
     if clothFolder and clothEnabled then
         for _, cloth in pairs(clothFolder:GetChildren()) do
-            if not oreESP[cloth] then
-                createOreESP(cloth)
-            end
+            if cloth:IsA("Model") then
+                -- Debugging log for Cloth models
+                print("Checking Cloth Model: " .. cloth.Name)
 
-            local clothESP = oreESP[cloth]
-            local screenPos, onScreen = Camera:WorldToViewportPoint(cloth.Position)
+                if not oreESP[cloth] then
+                    createResourceESP(cloth)
+                end
 
-            if onScreen then
-                clothESP.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
-                clothESP.text.Text = "Cloth"
-                clothESP.text.Visible = true
-                clothESP.highlight.Enabled = true
+                local clothESP = oreESP[cloth]
+                local part = cloth:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+
+                    if onScreen and (Camera.CFrame.Position - part.Position).Magnitude <= espRenderDistance then
+                        clothESP.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                        clothESP.text.Text = "Cloth"
+                        clothESP.text.Visible = true
+                        clothESP.highlight.Enabled = true
+                    else
+                        clothESP.text.Visible = false
+                        clothESP.highlight.Enabled = false
+                    end
+                end
             else
-                clothESP.text.Visible = false
-                clothESP.highlight.Enabled = false
+                -- If Cloth ESP is disabled, ensure the text and highlight are turned off
+                if oreESP[cloth] then
+                    oreESP[cloth].text.Visible = false
+                    oreESP[cloth].highlight.Enabled = false
+                end
+            end
+        end
+    else
+        -- If Cloth ESP is disabled, hide the text and highlight for cloth
+        for _, cloth in pairs(clothFolder:GetChildren()) do
+            if oreESP[cloth] then
+                oreESP[cloth].text.Visible = false
+                oreESP[cloth].highlight.Enabled = false
             end
         end
     end
+
+    if clothFolder and not clothEnabled then
+        for _, cloth in pairs(clothFolder:GetChildren()) do
+            if oreESP[cloth] then
+                oreESP[cloth].text.Visible = false
+                oreESP[cloth].highlight.Enabled = false
+            end
+        end
+    end
+    
 end)
 
 ThemeManager:SetLibrary(Library)
