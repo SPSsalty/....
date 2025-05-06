@@ -27,6 +27,7 @@ local sleepingESP = {}
 local oreESP = {}
 local resourcesFolder = workspace:FindFirstChild("Resources")
 local clothFolder = workspace:FindFirstChild("ClothPlants")
+local backpackESP = {}
 
 local fovAmount = 120
 local teamCheck = false
@@ -63,6 +64,7 @@ local stoneOreEnabled = false
 local brimstoneOreEnabled = false
 local ironOreEnabled = false
 local clothEnabled = false
+local backpackESPEnabled = false
 
 local smoothness = 1
 local aimbotKey = Enum.KeyCode.F
@@ -417,6 +419,33 @@ local function createSleepingHighlight(model)
     sleepingESP[model] = esp
 end
 
+local function createBackpackESP(model)
+    local part = model:FindFirstChildWhichIsA("BasePart")
+    if not part then return end
+
+    local esp = {
+        text = Drawing.new("Text"),
+        highlight = Instance.new("Highlight")
+    }
+
+    esp.text.Size = 16
+    esp.text.Center = true
+    esp.text.Outline = true
+    esp.text.Visible = false
+    esp.text.Color = espColor
+    esp.text.Text = "Backpack"
+
+    esp.highlight.FillColor = espColor
+    esp.highlight.OutlineColor = Color3.new(1, 1, 1)
+    esp.highlight.FillTransparency = 0.5
+    esp.highlight.OutlineTransparency = 0
+    esp.highlight.Enabled = false
+    esp.highlight.Adornee = part
+    esp.highlight.Parent = game:GetService("CoreGui")
+
+    backpackESP[model] = esp
+end
+
 MainLeftBox:AddToggle('AimbotEnabled', {
     Text = 'Enable Aimbot',
     Default = false,
@@ -643,19 +672,6 @@ ESPLeftBox:AddToggle('Show Names', {
     end
 })
 
-ESPLeftBox:AddToggle('SleepingESP', {
-    Text = 'Sleeping ESP',
-    Default = false,
-    Tooltip = 'Show ESP for sleeping players',
-    Callback = function(state)
-        sleepingESPEnabled = state
-        for _, esp in pairs(sleepingESP) do
-            esp.text.Visible = espEnabled and state
-            esp.highlight.Enabled = espEnabled and state
-        end
-    end    
-})
-
 ESPLeftBox:AddToggle('Distance ESP', {
     Text = 'Distance ESP',
     Tooltip = 'Show distance to workspace players', 
@@ -668,6 +684,32 @@ ESPLeftBox:AddToggle('Distance ESP', {
             end
         end
     end
+})
+
+ESPLeftBox:AddToggle('BackpackESP', {
+    Text = 'Backpack ESP',
+    Default = false,
+    Tooltip = 'Show ESP for dropped backpacks',
+    Callback = function(state)
+        backpackESPEnabled = state
+        for _, esp in pairs(backpackESP) do
+            esp.text.Visible = espEnabled and state
+            esp.highlight.Enabled = espEnabled and state
+        end
+    end
+})
+
+ESPLeftBox:AddToggle('SleepingESP', {
+    Text = 'Sleeping ESP',
+    Default = false,
+    Tooltip = 'Show ESP for sleeping players',
+    Callback = function(state)
+        sleepingESPEnabled = state
+        for _, esp in pairs(sleepingESP) do
+            esp.text.Visible = espEnabled and state
+            esp.highlight.Enabled = espEnabled and state
+        end
+    end    
 })
 
 ESPRightBox:AddToggle('StoneOreESP', {
@@ -823,6 +865,77 @@ MovementBox:AddSlider('TPWalkSpeed', {
     Compact = false,
     Callback = function(value)
         TPWalkSpeed = value
+    end
+})
+
+MovementBox:AddToggle('NoFallDamage', {
+    Text = 'No Fall Damage',
+    Default = false,
+    Tooltip = 'Prevents taking fall damage',
+    Callback = function(state)
+        noFallDamageEnabled = state
+
+        if noFallConnection then
+            noFallConnection:Disconnect()
+            noFallConnection = nil
+        end
+
+        if state then
+            noFallConnection = RunService.RenderStepped:Connect(function()
+                local player = Players.LocalPlayer
+                local character = player.Character
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character and character:FindFirstChild("Humanoid")
+                if not (hrp and humanoid) then return end
+
+                if hrp.Velocity.Y < -50 then
+                    local rayOrigin = hrp.Position
+                    local rayDirection = Vector3.new(0, -15, 0)
+                    local hitPart, hitPos = workspace:FindPartOnRayWithIgnoreList(Ray.new(rayOrigin, rayDirection), {character})
+                    if hitPart then
+                        local dist = (rayOrigin - hitPos).Magnitude
+                        if dist < 15 then
+                            local slowFactor = dist / 15
+                            local newY = hrp.Velocity.Y * 0.7 * slowFactor
+                            hrp.Velocity = Vector3.new(hrp.Velocity.X, math.max(newY, -60), hrp.Velocity.Z)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
+
+MovementBox:AddToggle('WallClimb', {
+    Text = 'Wall Climb',
+    Default = false,
+    Tooltip = 'Climb walls automatically when walking against them',
+    Callback = function(state)
+        wallClimbEnabled = state
+
+        if wallClimbConnection then
+            wallClimbConnection:Disconnect()
+            wallClimbConnection = nil
+        end
+
+        if state then
+            wallClimbConnection = RunService.RenderStepped:Connect(function()
+                local character = Players.LocalPlayer.Character
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character and character:FindFirstChild("Humanoid")
+                if not (hrp and humanoid) then return end
+
+                local forward = humanoid.MoveDirection
+                if forward.Magnitude > 0 then
+                    local ray = Ray.new(hrp.Position, forward.Unit * 2)
+                    local hitPart, _, normal = workspace:FindPartOnRayWithIgnoreList(ray, {character})
+                    if hitPart and math.abs(normal.Y) < 0.1 then
+                        hrp.Velocity = Vector3.new(forward.X * 5, 30, forward.Z * 5)
+                        humanoid:ChangeState(Enum.HumanoidStateType.Climbing)
+                    end
+                end
+            end)
+        end
     end
 })
 
@@ -1075,6 +1188,43 @@ RunService.RenderStepped:Connect(function()
         end
     end           
     
+    local droppedFolder = workspace:FindFirstChild("DroppedPacks")
+    if droppedFolder then
+        for _, model in pairs(droppedFolder:GetChildren()) do
+            if model:IsA("Model") and model.Name == "Backpack" then
+                if not backpackESP[model] then
+                    createBackpackESP(model)
+                end
+
+                local esp = backpackESP[model]
+                local part = model:FindFirstChildWhichIsA("BasePart")
+
+                if esp and part then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    local distance = (Camera.CFrame.Position - part.Position).Magnitude
+
+                    if espEnabled and backpackESPEnabled and onScreen and distance <= espRenderDistance then
+                        esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                        esp.text.Visible = true
+                        esp.highlight.Enabled = true
+                    else
+                        esp.text.Visible = false
+                        esp.highlight.Enabled = false
+                    end
+                end
+            end
+        end
+
+        -- Clean up removed backpacks
+        for model, esp in pairs(backpackESP) do
+            if not model:IsDescendantOf(droppedFolder) then
+                if esp.text then esp.text:Remove() end
+                if esp.highlight then esp.highlight:Destroy() end
+                backpackESP[model] = nil
+            end
+        end
+    end
+
 end)
 
 ThemeManager:SetLibrary(Library)
