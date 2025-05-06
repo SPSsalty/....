@@ -1,4 +1,3 @@
--- Visual Variables
 local espColor = Color3.fromRGB(255, 0, 0)
 local fovColor = Color3.fromRGB(255, 255, 255)
 local workspaceESP = {}
@@ -24,18 +23,16 @@ local hitboxSize = 0
 local hitboxTransparency = 0
 local TPWalkSpeed = 0
 local originalModelTransparency = {}
-
+local sleepingESP = {}
 local oreESP = {}
 local resourcesFolder = workspace:FindFirstChild("Resources")
 local clothFolder = workspace:FindFirstChild("ClothPlants")
 
--- FOV settings
 local fovAmount = 120
 local teamCheck = false
-local targetPart = "Head"  -- Default target is Head
-local espRenderDistance = 1000 -- default, will be updated by slider
+local targetPart = "Head" 
+local espRenderDistance = 1000
 
--- FOV Circle
 local fovCircle = Drawing.new("Circle")
 fovCircle.Radius = fovAmount
 fovCircle.Visible = true
@@ -44,7 +41,6 @@ fovCircle.Thickness = 1
 fovCircle.NumSides = 11
 fovCircle.Position = Vector2.new(0, 0)
 
--- Toggle states
 local isAimbotEnabled = false
 local chamsEnabled = false
 local rightMouseHeld = false
@@ -62,14 +58,13 @@ local distanceEnabled = false
 local xrayToggledOn = false
 local showHealth = false
 local showTool = false
-
+local sleepingESPEnabled = false
 local stoneOreEnabled = false
 local brimstoneOreEnabled = false
 local ironOreEnabled = false
 local clothEnabled = false
 
---Aimbot Settings
-local smoothness = 1 -- Default smoothness value
+local smoothness = 1
 local aimbotKey = Enum.KeyCode.F
 
 local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
@@ -78,22 +73,18 @@ local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
--- Services
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-
--- Create window
 local Window = Library:CreateWindow({
     Title = 'Auralis | Beta Version',
     Center = true, 
     AutoShow = true,
 })
 
--- Create Tabs
 local Tabs = {
     Main = Window:AddTab('Main'), 
     ESP = Window:AddTab('ESP'),
@@ -103,7 +94,6 @@ local Tabs = {
     ['UI Settings'] = Window:AddTab('Settings'),
 }
 
--- Main Tab
 local MainLeftBox = Tabs.Main:AddLeftGroupbox('Aimbot')
 local MainRightBox = Tabs.Main:AddRightGroupbox('FOV Settings')
 local MainCrosshairBox = Tabs.Main:AddRightGroupbox('Crosshair')
@@ -117,7 +107,6 @@ local MovementBox = Tabs.Misc:AddRightGroupbox('Another Miscellaneous')
 local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
 local ThirdPersonBox = Tabs.Misc:AddRightGroupbox('Third Person')
 
--- Initialize Drawing objects after UI
 local success, Drawing = pcall(function() return Drawing end)
 if not success then
     warn("Drawing API not available")
@@ -129,7 +118,6 @@ local crosshair = {
     vertical = Drawing.new("Line")
 }
 
--- Update workspace ESP functions
 local function createWorkspaceESP(model)
     local head = model:FindFirstChild("Head", true)
     if not head or not head:IsA("MeshPart") then return end
@@ -230,7 +218,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Add death handling functions
 local function removeEspBox(player)
     if espBoxes[player] then
         pcall(function()
@@ -252,7 +239,6 @@ local function setupDeathHandler(player)
     end
 end
 
--- Add character handlers after ESP creation
 game.Players.PlayerAdded:Connect(function(player)
     player.CharacterAdded:Connect(function(character)
         setupDeathHandler(player)
@@ -263,7 +249,6 @@ game.Players.PlayerRemoving:Connect(function(player)
     removeEspBox(player)
 end)
 
--- Setup existing players
 for _, player in pairs(game.Players:GetPlayers()) do
     if player ~= game.Players.LocalPlayer then
         setupDeathHandler(player)
@@ -273,7 +258,6 @@ for _, player in pairs(game.Players:GetPlayers()) do
     end
 end
 
--- Add Chams function
 local function applyChams(player)
     if not player.Character then return end
     if teamCheck and player.Team == game.Players.LocalPlayer.Team then return end
@@ -308,16 +292,13 @@ RunService.RenderStepped:Connect(function()
         local character = player.Character
         if not character or not character:FindFirstChild("HumanoidRootPart") then continue end
 
-        -- Team check
         if teamCheck and player.Team == Players.LocalPlayer.Team then continue end
 
         local distance = (localRoot.Position - character.HumanoidRootPart.Position).Magnitude
         if distance > espRenderDistance then continue end
 
-        -- Apply Chams to character parts
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                -- Save original properties only once
                 if not originalProperties[part] then
                     originalProperties[part] = {
                         Material = part.Material,
@@ -326,7 +307,6 @@ RunService.RenderStepped:Connect(function()
                     }
                 end
 
-                -- Apply chams color/material once
                 if not table.find(chamsParts, part) then
                     part.Material = Enum.Material.ForceField
                     part.Color = espColor
@@ -351,13 +331,11 @@ local function setTransparency(model, transparency)
     for _, descendant in ipairs(model:GetDescendants()) do
         if descendant:IsA("BasePart") or descendant:IsA("MeshPart") or descendant:IsA("Part") then
             if transparency ~= nil then
-                -- Save original transparency once
                 if not originalModelTransparency[descendant] then
                     originalModelTransparency[descendant] = descendant.Transparency
                 end
                 descendant.Transparency = transparency
             else
-                -- Restore
                 if originalModelTransparency[descendant] then
                     descendant.Transparency = originalModelTransparency[descendant]
                     originalModelTransparency[descendant] = nil
@@ -378,8 +356,7 @@ local function updateXray()
             if xrayEnabled then
                 setTransparency(model, transparencyValue)
             else
-                -- Restore original transparencies
-                setTransparency(model, nil) -- nil will trigger restoration
+                setTransparency(model, nil)
             end
         end
     end
@@ -411,6 +388,33 @@ local function createResourceESP(model)
     resourceESPInstance.highlight.Parent = game:GetService("CoreGui")
 
     oreESP[model] = resourceESPInstance
+end
+
+local function createSleepingHighlight(model)
+    local head = model:FindFirstChild("Head", true)
+    if not head or not head:IsA("BasePart") then return end
+
+    local esp = {
+        text = Drawing.new("Text"),
+        highlight = Instance.new("Highlight")
+    }
+
+    esp.text.Size = 16
+    esp.text.Center = true
+    esp.text.Outline = true
+    esp.text.Visible = false
+    esp.text.Color = espColor
+    esp.text.Text = "Sleeping"
+
+    esp.highlight.FillColor = espColor
+    esp.highlight.OutlineColor = Color3.new(1, 1, 1)
+    esp.highlight.FillTransparency = 0.5
+    esp.highlight.OutlineTransparency = 0
+    esp.highlight.Enabled = false
+    esp.highlight.Adornee = head
+    esp.highlight.Parent = game:GetService("CoreGui")
+
+    sleepingESP[model] = esp
 end
 
 MainLeftBox:AddToggle('AimbotEnabled', {
@@ -557,8 +561,6 @@ MainHitboxBox:AddSlider('HitboxTransparency', {
     end
 })
 
--- Aimbot | FOV | Toggle Part | Stuff Above --
-
 ESPLeftBox:AddToggle('ESP Toggle', {
     Text = 'ESP Toggle',
     Tooltip = 'Turn on or off ESP',
@@ -607,7 +609,6 @@ ESPLeftBox:AddToggle('Team Check Esp', {
     end
 })
 
--- Add Chams toggle to Visuals tab
 ESPLeftBox:AddToggle('Chams', { 
     Text = 'Chams',
     Tooltip = 'See players through walls',
@@ -642,7 +643,19 @@ ESPLeftBox:AddToggle('Show Names', {
     end
 })
 
--- Add workspace ESP toggle
+ESPLeftBox:AddToggle('SleepingESP', {
+    Text = 'Sleeping ESP',
+    Default = false,
+    Tooltip = 'Show ESP for sleeping players',
+    Callback = function(state)
+        sleepingESPEnabled = state
+        for _, esp in pairs(sleepingESP) do
+            esp.text.Visible = espEnabled and state
+            esp.highlight.Enabled = espEnabled and state
+        end
+    end    
+})
+
 ESPLeftBox:AddToggle('Distance ESP', {
     Text = 'Distance ESP',
     Tooltip = 'Show distance to workspace players', 
@@ -693,8 +706,6 @@ ESPRightBox:AddToggle('ClothESP', {
     end
 })
 
--- | All ESP Settings And Toggles Above | --
-
 WorldLeftBox:AddToggle('Fullbright', {
     Text = 'Fullbright',
     Default = false,
@@ -731,8 +742,6 @@ WorldLeftBox:AddToggle('NoFog', {
         end
     end
 })
-
--- | All World Settings And Toggles Above | --
 
 MiscLeftBox:AddToggle('XRay', {
     Text = 'XRay',
@@ -817,8 +826,6 @@ MovementBox:AddSlider('TPWalkSpeed', {
     end
 })
 
--- | All Misc Settings And Toggles Above | --
-
 UserInputService.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         rightMouseHeld = true
@@ -838,7 +845,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             updateXray()
             Library:Notify('Xray ' .. (xrayEnabled and "Enabled" or "Disabled"), 2)
         elseif xrayEnabled then
-            -- Safety: disable XRay if toggle was turned off but key is still toggling
             xrayEnabled = false
             updateXray()
         end
@@ -916,7 +922,6 @@ local function GetClosestPlayer()
 end
 
 RunService.RenderStepped:Connect(function()
-    -- Early exit unless both aimbot is toggled AND right-click is held
     if not isAimbotEnabled or not rightMouseHeld then return end
 
     local target = GetClosestPlayer()
@@ -931,15 +936,21 @@ end)
 
 RunService.RenderStepped:Connect(function()
     if not espEnabled then
-        -- Turn off all ESP when the main ESP is off
+        for _, esp in pairs(workspaceESP) do
+            esp.text.Visible = false
+            esp.highlight.Enabled = false
+        end
         for _, esp in pairs(oreESP) do
             esp.text.Visible = false
             esp.highlight.Enabled = false
         end
+        for _, esp in pairs(sleepingESP) do
+            esp.text.Visible = false
+            esp.highlight.Enabled = false
+        end
         return
-    end
+    end    
 
-    -- Update Resource (Ore) ESP
     for _, ore in pairs(resourcesFolder:GetChildren()) do
         if ore:IsA("Model") then
 
@@ -952,7 +963,6 @@ RunService.RenderStepped:Connect(function()
                 showOreESP = true
             end
 
-            -- If ore ESP is enabled, create it
             if showOreESP then
                 if not oreESP[ore] then
                     createResourceESP(ore)
@@ -982,7 +992,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Update Cloth ESP
     if clothFolder and clothEnabled then
         for _, cloth in pairs(clothFolder:GetChildren()) do
             if cloth:IsA("Model") then
@@ -1007,7 +1016,6 @@ RunService.RenderStepped:Connect(function()
                     end
                 end
             else
-                -- If Cloth ESP is disabled, ensure the text and highlight are turned off
                 if oreESP[cloth] then
                     oreESP[cloth].text.Visible = false
                     oreESP[cloth].highlight.Enabled = false
@@ -1015,7 +1023,6 @@ RunService.RenderStepped:Connect(function()
             end
         end
     else
-        -- If Cloth ESP is disabled, hide the text and highlight for cloth
         for _, cloth in pairs(clothFolder:GetChildren()) do
             if oreESP[cloth] then
                 oreESP[cloth].text.Visible = false
@@ -1032,6 +1039,41 @@ RunService.RenderStepped:Connect(function()
             end
         end
     end
+
+    local offlineFolder = workspace:FindFirstChild("OfflinePlayers")
+    if offlineFolder then
+        for _, model in pairs(offlineFolder:GetChildren()) do
+            if not sleepingESP[model] then
+                createSleepingHighlight(model)
+            end
+    
+            local esp = sleepingESP[model]
+            local head = model:FindFirstChild("Head", true)
+    
+            if esp and head then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                local distance = (Camera.CFrame.Position - head.Position).Magnitude
+    
+                if espEnabled and sleepingESPEnabled and onScreen and distance <= espRenderDistance then
+                    esp.text.Position = Vector2.new(screenPos.X, screenPos.Y - 20)
+                    esp.text.Visible = true
+                    esp.highlight.Enabled = true
+                else
+                    esp.text.Visible = false
+                    esp.highlight.Enabled = false
+                end
+            end
+        end
+    
+        -- Cleanup destroyed
+        for model, esp in pairs(sleepingESP) do
+            if not model:IsDescendantOf(offlineFolder) then
+                if esp.text then esp.text:Remove() end
+                if esp.highlight then esp.highlight:Destroy() end
+                sleepingESP[model] = nil
+            end
+        end
+    end           
     
 end)
 
