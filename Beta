@@ -599,8 +599,8 @@ ESPLeftBox:AddLabel('ESP Color'):AddColorPicker('ESP Color', {
     end
 })
 
-ESPLeftBox:AddToggle('Team Check', {
-    Text = 'Team Check',
+ESPLeftBox:AddToggle('Team Check Esp', {
+    Text = 'Team Check Esp',
     Tooltip = 'Toggle team check for visuals',
     Callback = function(state)
         teamCheck = state
@@ -942,8 +942,6 @@ RunService.RenderStepped:Connect(function()
     -- Update Resource (Ore) ESP
     for _, ore in pairs(resourcesFolder:GetChildren()) do
         if ore:IsA("Model") then
-            -- Debugging log to check ore names
-            print("Checking Ore: " .. ore.Name)
 
             local showOreESP = false
             if (ore.Name == "Stone Ore" or ore.Name == "Stone Ore Sand") and stoneOreEnabled then
@@ -988,8 +986,6 @@ RunService.RenderStepped:Connect(function()
     if clothFolder and clothEnabled then
         for _, cloth in pairs(clothFolder:GetChildren()) do
             if cloth:IsA("Model") then
-                -- Debugging log for Cloth models
-                print("Checking Cloth Model: " .. cloth.Name)
 
                 if not oreESP[cloth] then
                     createResourceESP(cloth)
